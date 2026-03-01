@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, CheckCircle2, MapPin, Calendar, Package, ListFilter } from 'lucide-react' // Thêm ListFilter icon
+import { ArrowLeft, CheckCircle2, MapPin, Calendar, Package, ListFilter } from 'lucide-react' 
 
 // HÀM TỰ LẤY TỌA ĐỘ TỪ ĐỊA CHỈ (Geocoding)
 async function getCoords(address: string) {
@@ -30,12 +30,11 @@ export default function NewOrderPage() {
 
   const [customerType, setCustomerType] = useState('khach_le')
   
-  // BỔ SUNG TRƯỜNG grade_type (PHÂN LOẠI YẾN) VÀO FORM
   const [form, setForm] = useState({ 
     name: '', phone: '', address: '', 
     weight: '', unitPrice: '', unitCost: '', 
     shippingFee: '', status: 'Chưa giao', note: '',
-    batch_id: '', grade_type: 'Xô', // Mặc định bán hàng Xô zin
+    batch_id: '', grade_type: 'Xô', 
     orderDate: new Date().toISOString().split('T')[0] 
   })
 
@@ -45,36 +44,63 @@ export default function NewOrderPage() {
       const { data: custData } = await supabase.from('customers').select('id, name, phone, address')
       if (custData) setExistingCustomers(custData)
 
-      // 2. Lấy Lô hàng kèm theo các đơn đã bán để tính tồn kho thực tế
+      // 2. Lấy Lô hàng kèm theo các đơn đã bán để tính tồn kho thực tế TỪNG LOẠI
       const { data: batchData } = await supabase
         .from('batches')
-        .select('*, orders(weight, weight_loss)')
+        .select('*, orders(weight, weight_loss, grade_type)')
         .order('created_at', { ascending: false })
       
       if (batchData) {
-        // Lọc: Chỉ hiện những lô thực sự còn yến trong kho
-        const filtered = batchData.filter(batch => {
-            const sold = batch.orders?.reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0) || 0;
-            const loss = batch.orders?.reduce((sum: number, o: any) => sum + Number(o.weight_loss || 0), 0) || 0;
-            return (Number(batch.total_weight) - sold - loss) > 0;
+        const processedBatches = batchData.map(batch => {
+            const sold_xo = batch.orders?.filter((o:any) => o.grade_type === 'Xô').reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0) || 0;
+            const sold_dep = batch.orders?.filter((o:any) => o.grade_type === 'Đẹp').reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0) || 0;
+            const sold_vua = batch.orders?.filter((o:any) => o.grade_type === 'Vừa').reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0) || 0;
+            const sold_xau = batch.orders?.filter((o:any) => o.grade_type === 'Xấu').reduce((sum: number, o: any) => sum + Number(o.weight || 0), 0) || 0;
+            
+            const remain_xo = Number(batch.weight_xo || 0) - sold_xo;
+            const remain_dep = Number(batch.weight_dep || 0) - sold_dep;
+            const remain_vua = Number(batch.weight_vua || 0) - sold_vua;
+            const remain_xau = Number(batch.weight_xau || 0) - sold_xau;
+            
+            const total_sold = sold_xo + sold_dep + sold_vua + sold_xau;
+            const total_loss = batch.orders?.reduce((sum: number, o: any) => sum + Number(o.weight_loss || 0), 0) || 0;
+            const total_remain = Number(batch.total_weight) - total_sold - total_loss;
+
+            return {
+                ...batch, remain_xo, remain_dep, remain_vua, remain_xau, total_remain
+            }
         });
-        setActiveBatches(filtered)
+
+        // Chỉ giữ lại những lô tổng tồn kho > 0
+        setActiveBatches(processedBatches.filter(b => b.total_remain > 0));
       }
     }
     fetchData()
   }, [])
 
-  // TỰ ĐIỀN GIÁ VỐN KHI CHỌN LÔ
+  // XỬ LÝ KHI CHỌN LÔ HÀNG (Làm tròn giá vốn & Tự động chọn loại hàng còn)
   const handleBatchChange = (batchId: string) => {
     const selectedBatch = activeBatches.find(b => b.id === batchId);
+    
+    // Tìm loại hàng đầu tiên còn > 0kg để tự động chọn
+    let firstAvailableGrade = '';
+    if (selectedBatch) {
+        if (selectedBatch.remain_xo > 0) firstAvailableGrade = 'Xô';
+        else if (selectedBatch.remain_dep > 0) firstAvailableGrade = 'Đẹp';
+        else if (selectedBatch.remain_vua > 0) firstAvailableGrade = 'Vừa';
+        else if (selectedBatch.remain_xau > 0) firstAvailableGrade = 'Xấu';
+    }
+
     setForm(prev => ({
       ...prev,
       batch_id: batchId,
-      unitCost: selectedBatch ? selectedBatch.cost_per_kg.toString() : ''
+      // Đã làm tròn số không còn bị dài dằng dặc
+      unitCost: selectedBatch ? Math.round(selectedBatch.cost_per_kg).toString() : '',
+      // Tự nhảy sang loại hàng còn
+      grade_type: firstAvailableGrade || 'Xô' 
     }));
   }
 
-  // LOGIC TÍNH TOÁN DÒNG TIỀN CHI TIẾT
   const weightNum = Number(form.weight) || 0;
   const unitCostNum = Number(form.unitCost) || 0;
   const unitPriceNum = Number(form.unitPrice) || 0;
@@ -93,7 +119,6 @@ export default function NewOrderPage() {
     }
     setLoading(true)
     try {
-      // Tự động lấy tọa độ cho bản đồ thị phần
       const coords = await getCoords(form.address);
 
       let { data: cust } = await supabase.from('customers').select('id').eq('phone', form.phone).maybeSingle();
@@ -114,7 +139,7 @@ export default function NewOrderPage() {
 
       await supabase.from('orders').insert([{
         customer_id: customerId, batch_id: form.batch_id, 
-        grade_type: form.grade_type, // ĐƯA PHÂN LOẠI VÀO DATABASE
+        grade_type: form.grade_type, 
         weight: weightNum, cost: totalCost, revenue: totalRevenue,
         profit: expectedProfit, status: form.status, tax_amount: taxAmount,
         shipping_fee: shippingFeeNum, note: form.note,
@@ -131,6 +156,9 @@ export default function NewOrderPage() {
     c.name.toLowerCase().includes(form.name.toLowerCase()) || c.phone?.includes(form.name)
   );
 
+  // Lấy ra Lô đang được chọn để check xem loại hàng nào hết
+  const currentBatch = activeBatches.find(b => b.id === form.batch_id);
+
   return (
     <div className="p-8 max-w-2xl mx-auto bg-gray-50 min-h-screen relative pb-20 animate-in fade-in">
       <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-400 hover:text-black mb-10 transition-colors font-black uppercase text-xs">
@@ -146,34 +174,51 @@ export default function NewOrderPage() {
         
         {/* KHU VỰC CHỌN LÔ & PHÂN LOẠI */}
         <div className="flex flex-col md:flex-row justify-between gap-4 bg-purple-50/50 p-4 rounded-3xl border border-purple-100">
-          <div className="flex-1 flex items-center gap-2">
-            <Package size={18} className="text-purple-500" />
-            <span className="text-xs font-black uppercase text-purple-700 whitespace-nowrap">Kho lô:</span>
+          <div className="flex-1 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Package size={18} className="text-purple-500" />
+              <span className="text-xs font-black uppercase text-purple-700 whitespace-nowrap">Kho lô:</span>
+            </div>
+            
             <select 
               required
-              className="bg-transparent font-bold text-purple-900 outline-none w-full text-sm cursor-pointer"
+              className="bg-white border rounded-xl p-2 font-bold text-purple-900 outline-none w-full text-sm cursor-pointer shadow-sm"
               value={form.batch_id}
               onChange={(e) => handleBatchChange(e.target.value)}
             >
-              <option value="">-- Chọn lô --</option>
+              <option value="">-- Bấm chọn Lô để xem tồn kho --</option>
               {activeBatches.map(b => (
-                  <option key={b.id} value={b.id}>{b.batch_code}</option>
+                  <option key={b.id} value={b.id}>
+                      {b.batch_code} | Xô: {b.remain_xo > 0 ? b.remain_xo.toFixed(2) : 0}kg | Đẹp: {b.remain_dep > 0 ? b.remain_dep.toFixed(2) : 0}kg | Vừa: {b.remain_vua > 0 ? b.remain_vua.toFixed(2) : 0}kg | Xấu: {b.remain_xau > 0 ? b.remain_xau.toFixed(2) : 0}kg
+                  </option>
               ))}
             </select>
           </div>
 
-          <div className="flex-1 flex items-center gap-2 border-l-0 md:border-l border-purple-200 pl-0 md:pl-4">
-            <ListFilter size={18} className="text-orange-500" />
-            <span className="text-xs font-black uppercase text-orange-700 whitespace-nowrap">Phân loại:</span>
+          <div className="flex-1 flex flex-col gap-2 border-l-0 md:border-l border-purple-200 pl-0 md:pl-4">
+            <div className="flex items-center gap-2">
+               <ListFilter size={18} className="text-orange-500" />
+               <span className="text-xs font-black uppercase text-orange-700 whitespace-nowrap">Phân loại:</span>
+            </div>
             <select 
-              className="bg-transparent font-bold text-orange-900 outline-none w-full text-sm cursor-pointer" 
+              className="bg-white border rounded-xl p-2 font-bold text-orange-900 outline-none w-full text-sm cursor-pointer shadow-sm disabled:opacity-50" 
               value={form.grade_type} 
               onChange={(e) => setForm({...form, grade_type: e.target.value})}
+              disabled={!form.batch_id} // Chưa chọn lô thì khóa luôn ô này
             >
-              <option value="Xô">Hàng Xô Zin</option>
-              <option value="Đẹp">Hàng Đẹp (VIP)</option>
-              <option value="Vừa">Hàng Vừa</option>
-              <option value="Xấu">Hàng Xấu (Gãy/Vụn)</option>
+              {/* KIỂM TRA ĐIỀU KIỆN ĐỂ KHÓA (DISABLE) CÁC LỰA CHỌN HẾT HÀNG */}
+              <option value="Xô" disabled={currentBatch && currentBatch.remain_xo <= 0}>
+                Hàng Xô Zin {currentBatch && currentBatch.remain_xo <= 0 ? '(Hết)' : ''}
+              </option>
+              <option value="Đẹp" disabled={currentBatch && currentBatch.remain_dep <= 0}>
+                Hàng Đẹp (VIP) {currentBatch && currentBatch.remain_dep <= 0 ? '(Hết)' : ''}
+              </option>
+              <option value="Vừa" disabled={currentBatch && currentBatch.remain_vua <= 0}>
+                Hàng Vừa {currentBatch && currentBatch.remain_vua <= 0 ? '(Hết)' : ''}
+              </option>
+              <option value="Xấu" disabled={currentBatch && currentBatch.remain_xau <= 0}>
+                Hàng Xấu (Gãy/Vụn) {currentBatch && currentBatch.remain_xau <= 0 ? '(Hết)' : ''}
+              </option>
             </select>
           </div>
         </div>
@@ -216,7 +261,7 @@ export default function NewOrderPage() {
 
         <div className="grid grid-cols-2 gap-6">
           <div>
-            <label className="text-[10px] font-black text-red-400 uppercase ml-2">Giá vốn nhập (Tự điền)</label>
+            <label className="text-[10px] font-black text-red-400 uppercase ml-2">Giá vốn nhập TB/1kg</label>
             <input required type="number" className="w-full border-2 border-red-50 rounded-2xl p-3 font-bold text-red-600 outline-none bg-red-50/30" value={form.unitCost} onChange={e => setForm({...form, unitCost: e.target.value})} />
           </div>
           <div>

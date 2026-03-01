@@ -2,9 +2,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { 
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar
 } from 'recharts'
-import { DollarSign, TrendingUp, TrendingDown, Receipt, Wallet, PlusCircle, PieChart, Filter, Pencil, Trash2, X } from 'lucide-react'
+// Đổi tên BarChart của thư viện Icon thành BarChartIcon để không bị đụng hàng
+import { DollarSign, TrendingUp, ArrowDownRight, Receipt, Wallet, PlusCircle, PieChart, Filter, Pencil, Trash2, X, Activity, BarChart as BarChartIcon } from 'lucide-react'
 
 export default function ProfitPage() {
   const [orders, setOrders] = useState<any[]>([])
@@ -31,7 +32,7 @@ export default function ProfitPage() {
   const fetchData = async () => {
     setLoading(true)
     const [ordersRes, expensesRes] = await Promise.all([
-      supabase.from('orders').select('*'),
+      supabase.from('orders').select('*').order('created_at', { ascending: false }),
       supabase.from('expenses').select('*').order('expense_date', { ascending: false })
     ])
     if (ordersRes.data) setOrders(ordersRes.data)
@@ -55,7 +56,7 @@ export default function ProfitPage() {
 
   // HÀM XÓA CHI PHÍ
   const handleDeleteExpense = async (id: string) => {
-    if (!window.confirm("Duy có chắc chắn muốn xóa khoản chi này không? Xóa xong sẽ tính lại tiền đó nhé!")) return;
+    if (!window.confirm("Duy có chắc chắn muốn xóa khoản chi này không? Xóa xong hệ thống sẽ cộng lại tiền đó vào Lợi nhuận nhé!")) return;
     await supabase.from('expenses').delete().eq('id', id);
     fetchData();
   }
@@ -82,6 +83,13 @@ export default function ProfitPage() {
     }).eq('id', editingExpense.id);
     setEditingExpense(null);
     fetchData();
+  }
+
+  // Format số gọn gàng (vd: 160Tr, 1.5 Tỷ)
+  const formatCompactNumber = (number: number) => {
+    if (number >= 1e9) return (number / 1e9).toFixed(2) + ' Tỷ'
+    if (number >= 1e6) return (number / 1e6).toFixed(1) + ' Tr'
+    return number.toLocaleString('vi-VN') + 'đ'
   }
 
   const availableYears = useMemo(() => {
@@ -112,37 +120,50 @@ export default function ProfitPage() {
 
   const stats = useMemo(() => {
     const totalRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.revenue || 0), 0)
-    const totalCost = filteredOrders.reduce((sum, o) => sum + Number(o.cost || 0), 0)
+    const totalCOGS = filteredOrders.reduce((sum, o) => sum + Number(o.cost || 0), 0)
     const totalTax = filteredOrders.reduce((sum, o) => sum + Number(o.tax_amount || 0), 0)
     const totalShip = filteredOrders.reduce((sum, o) => sum + Number(o.shipping_fee || 0), 0)
     
-    const grossProfit = totalRevenue - totalCost - totalTax - totalShip
-    const totalExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
-    const netProfit = grossProfit - totalExpenses
+    // TÍNH TOÁN HAO HỤT QUY RA TIỀN ĐỂ TRỪ VÀO LÃI
+    const totalLossCost = filteredOrders.reduce((sum, o) => {
+        const costPerKg = Number(o.weight) > 0 ? (Number(o.cost) / Number(o.weight)) : 0;
+        return sum + (Number(o.weight_loss || 0) * costPerKg);
+    }, 0)
+
+    const totalOutsideExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
+    
+    // TỔNG TOÀN BỘ CHI PHÍ
+    const totalAllCosts = totalCOGS + totalTax + totalShip + totalLossCost + totalOutsideExpenses
+    const netProfit = totalRevenue - totalAllCosts
+    const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0.0'
 
     const isMonthView = filterType === 'month'
     const chartDataMap: Record<string, any> = {}
     
+    // Nhóm Dữ liệu cho Biểu đồ
     filteredOrders.forEach(o => {
       const d = new Date(o.created_at)
-      const key = isMonthView ? d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : d.toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' })
+      const key = isMonthView ? d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : `T${d.getMonth() + 1}/${d.getFullYear()}`
 
-      if (!chartDataMap[key]) chartDataMap[key] = { name: key, Doanh_thu: 0, Chi_phi_ngoai: 0, Loi_nhuan_rong: 0, gross: 0 }
+      if (!chartDataMap[key]) chartDataMap[key] = { name: key, Doanh_thu: 0, Chi_phi: 0, Loi_nhuan_rong: 0, gross: 0 }
       chartDataMap[key].Doanh_thu += Number(o.revenue || 0)
-      chartDataMap[key].gross += (Number(o.revenue || 0) - Number(o.cost || 0) - Number(o.tax_amount || 0) - Number(o.shipping_fee || 0))
+      
+      const costPerKg = Number(o.weight) > 0 ? (Number(o.cost) / Number(o.weight)) : 0;
+      const loss = Number(o.weight_loss || 0) * costPerKg;
+      chartDataMap[key].gross += (Number(o.revenue || 0) - Number(o.cost || 0) - Number(o.tax_amount || 0) - Number(o.shipping_fee || 0) - loss)
       chartDataMap[key].Loi_nhuan_rong = chartDataMap[key].gross
     })
 
     filteredExpenses.forEach(e => {
       const d = new Date(e.expense_date)
-      const key = isMonthView ? d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : d.toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' })
+      const key = isMonthView ? d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : `T${d.getMonth() + 1}/${d.getFullYear()}`
 
-      if (!chartDataMap[key]) chartDataMap[key] = { name: key, Doanh_thu: 0, Chi_phi_ngoai: 0, Loi_nhuan_rong: 0, gross: 0 }
-      chartDataMap[key].Chi_phi_ngoai += Number(e.amount || 0)
+      if (!chartDataMap[key]) chartDataMap[key] = { name: key, Doanh_thu: 0, Chi_phi: 0, Loi_nhuan_rong: 0, gross: 0 }
+      chartDataMap[key].Chi_phi += Number(e.amount || 0)
     })
 
     Object.keys(chartDataMap).forEach(k => {
-      chartDataMap[k].Loi_nhuan_rong = chartDataMap[k].gross - chartDataMap[k].Chi_phi_ngoai
+      chartDataMap[k].Loi_nhuan_rong = chartDataMap[k].gross - chartDataMap[k].Chi_phi
     })
 
     const chartData = Object.values(chartDataMap).sort((a, b) => {
@@ -150,29 +171,31 @@ export default function ProfitPage() {
         const [d1, m1] = a.name.split('/'); const [d2, m2] = b.name.split('/')
         return new Date(2000, Number(m1)-1, Number(d1)).getTime() - new Date(2000, Number(m2)-1, Number(d2)).getTime()
       } else {
-        const [m1, y1] = a.name.split('/'); const [m2, y2] = b.name.split('/')
+        const [m1, y1] = a.name.replace('T', '').split('/'); const [m2, y2] = b.name.replace('T', '').split('/')
         return new Date(Number(y1), Number(m1)-1).getTime() - new Date(Number(y2), Number(m2)-1).getTime()
       }
     })
 
-    return { totalRevenue, grossProfit, totalExpenses, netProfit, chartData }
+    return { totalRevenue, totalCOGS, totalTax, totalShip, totalLossCost, totalOutsideExpenses, totalAllCosts, netProfit, profitMargin, chartData }
   }, [filteredOrders, filteredExpenses, filterType])
 
-  if (loading) return <div className="p-10 font-black text-gray-400 animate-pulse text-center uppercase">Đang tải báo cáo tài chính...</div>
+  if (loading) return <div className="p-10 font-black text-gray-400 animate-pulse text-center uppercase tracking-widest">Đang tải báo cáo tài chính...</div>
 
   const periodText = filterType === 'all' ? 'TẤT CẢ THỜI GIAN' : filterType === 'year' ? `NĂM ${filterYear}` : `THÁNG ${filterMonth.split('-')[1]}/${filterMonth.split('-')[0]}`
 
   return (
     <div className="p-6 space-y-6 animate-in fade-in duration-500 pb-20 max-w-7xl mx-auto">
+      
+      {/* HEADER & FILTER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-gray-900 text-white p-8 rounded-3xl shadow-xl gap-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-black tracking-tighter uppercase flex items-center gap-3">
-            <PieChart size={32} className="text-blue-400"/> Báo Cáo Tài Chính
+            <Activity size={32} className="text-blue-400"/> Báo Cáo Hiệu Quả
           </h1>
           <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-2">Kỳ báo cáo: <span className="text-white">{periodText}</span></p>
         </div>
         <button onClick={() => setShowExpenseForm(!showExpenseForm)} className="bg-red-500 hover:bg-red-400 px-6 py-3 rounded-xl font-black shadow-lg shadow-red-500/30 transition-all flex items-center gap-2 text-sm uppercase tracking-wider shrink-0">
-          {showExpenseForm ? 'Hủy bỏ' : <><PlusCircle size={18}/> Ghi Chi Phí</>}
+          {showExpenseForm ? 'Đóng form chi' : <><PlusCircle size={18}/> Ghi Chi Phí</>}
         </button>
       </div>
 
@@ -209,83 +232,163 @@ export default function ProfitPage() {
         </form>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-center">
-          <p className="text-[10px] font-black uppercase text-gray-400 mb-2 flex items-center gap-2"><TrendingUp size={14} className="text-blue-500"/> Tổng Doanh Thu</p>
-          <h2 className="text-2xl lg:text-3xl font-black text-gray-900 truncate" title={`${stats.totalRevenue}đ`}>{stats.totalRevenue.toLocaleString()}đ</h2>
+      {/* 4 THẺ CHỈ SỐ QUAN TRỌNG NHẤT */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white p-6 rounded-[30px] border border-gray-100 shadow-sm relative overflow-hidden group">
+           <div className="absolute -right-4 -top-4 text-gray-50 opacity-50 group-hover:scale-110 transition-transform"><Wallet size={100}/></div>
+           <p className="text-xs font-black uppercase text-gray-400 tracking-widest mb-2 relative z-10">Tổng Doanh Thu</p>
+           <h2 className="text-3xl lg:text-4xl font-black text-gray-900 truncate relative z-10" title={stats.totalRevenue.toLocaleString() + 'đ'}>
+              {formatCompactNumber(stats.totalRevenue)}
+           </h2>
         </div>
-        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-center">
-          <p className="text-[10px] font-black uppercase text-gray-400 mb-2 flex items-center gap-2"><Wallet size={14} className="text-green-500"/> Lãi Gộp Đơn Hàng</p>
-          <h2 className="text-2xl lg:text-3xl font-black text-gray-900 truncate" title={`${stats.grossProfit}đ`}>{stats.grossProfit.toLocaleString()}đ</h2>
+
+        <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-6 rounded-[30px] shadow-lg text-white relative overflow-hidden group">
+           <div className="absolute -right-4 -top-4 text-blue-500 opacity-30 group-hover:scale-110 transition-transform"><TrendingUp size={100}/></div>
+           <p className="text-xs font-black uppercase text-blue-200 tracking-widest mb-2 relative z-10">Tỷ Suất Lợi Nhuận (Hiệu quả)</p>
+           <h2 className="text-3xl lg:text-4xl font-black truncate relative z-10">
+              {stats.profitMargin}%
+           </h2>
+           <p className="text-[10px] text-blue-200 mt-2 font-bold relative z-10">Cứ 100đ bán ra, lãi {stats.profitMargin}đ</p>
         </div>
-        <div className="bg-red-50 p-6 rounded-3xl border border-red-100 flex flex-col justify-center">
-          <p className="text-[10px] font-black uppercase text-red-400 mb-2 flex items-center gap-2"><TrendingDown size={14}/> Tổng Chi Phí Ngoài</p>
-          <h2 className="text-2xl lg:text-3xl font-black text-red-600 truncate" title={`-${stats.totalExpenses}đ`}>-{stats.totalExpenses.toLocaleString()}đ</h2>
+
+        <div className="bg-white p-6 rounded-[30px] border border-red-100 shadow-sm relative overflow-hidden group">
+           <div className="absolute -right-4 -top-4 text-red-50 opacity-50 group-hover:scale-110 transition-transform"><ArrowDownRight size={100}/></div>
+           <p className="text-xs font-black uppercase text-red-400 tracking-widest mb-2 relative z-10">Tổng Mọi Chi Phí</p>
+           <h2 className="text-3xl lg:text-4xl font-black text-red-600 truncate relative z-10" title={stats.totalAllCosts.toLocaleString() + 'đ'}>
+              -{formatCompactNumber(stats.totalAllCosts)}
+           </h2>
+           <p className="text-[10px] text-gray-400 mt-2 font-bold relative z-10 uppercase">Bao gồm Cả tiền Vốn Yến</p>
         </div>
-        <div className="bg-gradient-to-br from-emerald-500 to-green-600 p-6 rounded-3xl text-white shadow-xl shadow-green-200 flex flex-col justify-center transform hover:scale-[1.02] transition-transform">
-          <p className="text-[10px] font-black uppercase text-green-100 mb-2 flex items-center gap-2"><DollarSign size={14}/> LỢI NHUẬN RÒNG CUỐI</p>
-          <h2 className="text-2xl lg:text-3xl font-black truncate" title={`+${stats.netProfit}đ`}>+{stats.netProfit.toLocaleString()}đ</h2>
+
+        <div className="bg-gradient-to-br from-emerald-400 to-emerald-600 p-6 rounded-[30px] shadow-lg text-white relative overflow-hidden group">
+           <div className="absolute -right-4 -top-4 text-emerald-300 opacity-30 group-hover:scale-110 transition-transform"><DollarSign size={100}/></div>
+           <p className="text-xs font-black uppercase text-emerald-100 tracking-widest mb-2 relative z-10">Lợi Nhuận Thực Tế Của Sếp</p>
+           <h2 className="text-3xl lg:text-4xl font-black truncate relative z-10" title={stats.netProfit.toLocaleString() + 'đ'}>
+              +{formatCompactNumber(stats.netProfit)}
+           </h2>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col">
-          <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-              <h3 className="text-lg font-black uppercase tracking-tighter text-gray-900 flex items-center gap-2">
-                 📊 Biểu Đồ Dòng Tiền <span className="text-blue-500 bg-blue-50 px-2 py-1 rounded-md text-xs">{filterType === 'month' ? 'Theo Ngày' : 'Theo Tháng'}</span>
-              </h3>
-              {stats.chartData.length <= 1 && <span className="text-[10px] bg-gray-100 text-gray-500 px-3 py-1 rounded-full font-bold uppercase">Cần thêm dữ liệu để vẽ biểu đồ</span>}
-          </div>
-          <div className="flex-1 min-h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 'bold' }} dy={10} />
-                <YAxis tickFormatter={(v) => `${v / 1000000}M`} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 'bold' }} />
-                <Tooltip cursor={{ stroke: '#f8fafc', strokeWidth: 2 }} contentStyle={{ borderRadius: '16px', border: '1px solid #f1f5f9', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold', fontSize: '12px' }} formatter={(v: any) => [`${Number(v).toLocaleString()}đ`]} />
-                <Legend wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', paddingTop: '20px' }}/>
-                <Line type="monotone" dataKey="Doanh_thu" name="Doanh Thu" stroke="#3b82f6" strokeWidth={3} dot={{ r: 5, strokeWidth: 2 }} activeDot={{ r: 7 }} />
-                <Line type="monotone" dataKey="Loi_nhuan_rong" name="Lợi Nhuận Ròng" stroke="#10b981" strokeWidth={3} dot={{ r: 5, strokeWidth: 2 }} />
-                <Line type="monotone" dataKey="Chi_phi_ngoai" name="Chi Phí Ngoài" stroke="#ef4444" strokeWidth={2} strokeDasharray="4 4" dot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+        
+        {/* BIỂU ĐỒ CỘT (DOANH THU VS LỢI NHUẬN) */}
+        <div className="lg:col-span-2 bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-2">
+              <div>
+                 {/* ĐÃ SỬA: BarChartIcon để không trùng tên với thẻ BarChart của recharts */}
+                 <h3 className="text-xl font-black uppercase tracking-tight text-gray-900 flex items-center gap-2"><BarChartIcon size={24} className="text-blue-500"/> Biểu Đồ Tăng Trưởng</h3>
+                 <p className="text-xs font-bold text-gray-400 uppercase mt-1">So sánh Tốc độ kiếm tiền {filterType === 'month' ? 'Theo Ngày' : 'Theo Tháng'}</p>
+              </div>
+              {stats.chartData.length <= 1 && <span className="text-[10px] bg-gray-100 text-gray-500 px-3 py-1 rounded-full font-bold uppercase">Cần thêm dữ liệu</span>}
+           </div>
+           
+           <div className="h-[350px] w-full">
+             <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} barGap={8}>
+                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12, fontWeight: 'bold'}} dy={10} />
+                   <YAxis tickFormatter={(val) => `${val / 1e6}Tr`} axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12, fontWeight: 'bold'}} />
+                   <Tooltip 
+                     cursor={{fill: '#f8fafc'}}
+                     contentStyle={{borderRadius: '20px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                     /* ĐÃ SỬA: Đổi (value: number) thành (value: any) để TypeScript không báo lỗi dòng 292 */
+                     formatter={(value: any) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(value) || 0)}
+                   />
+                   <Legend wrapperStyle={{paddingTop: '20px', fontSize: '12px', fontWeight: 'bold'}} />
+                   <Bar dataKey="Doanh_thu" name="Doanh Thu Bán Hàng" fill="#3b82f6" radius={[8, 8, 8, 8]} maxBarSize={50} />
+                   <Bar dataKey="Loi_nhuan_rong" name="Lợi Nhuận Ròng" fill="#10b981" radius={[8, 8, 8, 8]} maxBarSize={50} />
+                </BarChart>
+             </ResponsiveContainer>
+           </div>
         </div>
 
-        {/* LỊCH SỬ CHI PHÍ ĐÃ ĐƯỢC THÊM NÚT SỬA/XÓA */}
-        <div className="bg-gray-50 p-6 rounded-3xl border border-gray-200 flex flex-col h-[400px]">
-          <h3 className="text-lg font-black uppercase tracking-tighter mb-4 flex items-center justify-between text-gray-900 border-b pb-4">
-            <span className="flex items-center gap-2"><Receipt className="text-red-500" size={20} /> Sổ Chi Tiền</span>
-            <span className="text-[10px] text-gray-400 bg-white px-2 py-1 rounded-md border">{filteredExpenses.length} khoản</span>
-          </h3>
-          <div className="overflow-y-auto pr-2 space-y-3 flex-1 custom-scrollbar">
-            {filteredExpenses.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-50">
-                    <Receipt size={48} className="mb-2"/>
-                    <p className="font-bold text-xs uppercase tracking-widest text-center">Không có khoản chi nào<br/>trong kỳ này</p>
+        {/* CƠ CẤU CHI PHÍ DÒNG TIỀN (Thanh hiển thị % tiền chạy đi đâu) */}
+        <div className="bg-gray-900 p-8 rounded-[40px] shadow-xl text-white flex flex-col justify-between">
+           <div>
+              <h3 className="text-xl font-black uppercase tracking-tight text-white flex items-center gap-2 mb-1"><PieChart size={24} className="text-orange-400"/> Tiền của sếp đi đâu?</h3>
+              <p className="text-xs font-bold text-gray-400 uppercase mb-8">Cơ cấu dòng tiền (Tính trên 100% Doanh Thu)</p>
+
+              {stats.totalRevenue > 0 ? (
+                <div className="space-y-6">
+                   {/* Thanh tiến độ tổng hợp */}
+                   <div className="h-6 w-full flex rounded-full overflow-hidden mb-8 shadow-inner bg-gray-800">
+                      <div style={{width: `${(stats.totalCOGS/stats.totalRevenue)*100}%`}} className="bg-slate-500 hover:opacity-80 transition-opacity" title="Tiền Vốn Yến"></div>
+                      <div style={{width: `${((stats.totalTax + stats.totalShip + stats.totalLossCost)/stats.totalRevenue)*100}%`}} className="bg-orange-500 hover:opacity-80 transition-opacity" title="Thuế, Ship, Khấu hao"></div>
+                      <div style={{width: `${(stats.totalOutsideExpenses/stats.totalRevenue)*100}%`}} className="bg-red-500 hover:opacity-80 transition-opacity" title="Chi phí Vận hành ngoài"></div>
+                      <div style={{width: `${(stats.netProfit/stats.totalRevenue)*100}%`}} className="bg-emerald-500 hover:opacity-80 transition-opacity" title="Lợi Nhuận Ròng"></div>
+                   </div>
+
+                   {/* Chú giải chi tiết */}
+                   <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                         <div className="flex items-center gap-3"><span className="w-4 h-4 rounded-full bg-slate-500"></span> <span className="text-sm font-bold text-gray-300">Tiền Vốn Yến Kho</span></div>
+                         <div className="text-right">
+                            <span className="block font-black text-white">{((stats.totalCOGS/stats.totalRevenue)*100).toFixed(1)}%</span>
+                            <span className="text-[10px] text-gray-500">{formatCompactNumber(stats.totalCOGS)}</span>
+                         </div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                         <div className="flex items-center gap-3"><span className="w-4 h-4 rounded-full bg-orange-500"></span> <span className="text-sm font-bold text-gray-300">Thuế, Ship, Khấu hao</span></div>
+                         <div className="text-right">
+                            <span className="block font-black text-white">{(((stats.totalTax + stats.totalShip + stats.totalLossCost)/stats.totalRevenue)*100).toFixed(1)}%</span>
+                            <span className="text-[10px] text-gray-500">{formatCompactNumber(stats.totalTax + stats.totalShip + stats.totalLossCost)}</span>
+                         </div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                         <div className="flex items-center gap-3"><span className="w-4 h-4 rounded-full bg-red-500"></span> <span className="text-sm font-bold text-gray-300">Phí Vận hành (Sổ chi)</span></div>
+                         <div className="text-right">
+                            <span className="block font-black text-white">{((stats.totalOutsideExpenses/stats.totalRevenue)*100).toFixed(1)}%</span>
+                            <span className="text-[10px] text-gray-500">{formatCompactNumber(stats.totalOutsideExpenses)}</span>
+                         </div>
+                      </div>
+                      <div className="flex justify-between items-center border-t border-gray-700 pt-4 mt-2">
+                         <div className="flex items-center gap-3"><span className="w-4 h-4 rounded-full bg-emerald-500"></span> <span className="text-sm font-black text-white uppercase tracking-widest">Lợi Nhuận Bỏ Túi</span></div>
+                         <span className="font-black text-emerald-400 text-xl">{((stats.netProfit/stats.totalRevenue)*100).toFixed(1)}%</span>
+                      </div>
+                   </div>
                 </div>
-            ) : null}
-            {filteredExpenses.map(e => (
-              <div key={e.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex justify-between items-center hover:border-red-200 transition-colors group h-[72px]">
-                <div className="truncate pr-4 flex-1">
-                  <p className="font-black text-gray-900 text-sm truncate">{e.title}</p>
-                  <p className="text-[10px] font-bold text-gray-400 mt-1">{new Date(e.expense_date).toLocaleDateString('vi-VN')} • {e.category}</p>
-                </div>
-                
-                {/* Khu vực hiển thị tiền & Nút Sửa/Xóa */}
-                <div className="flex items-center shrink-0">
-                  <p className="font-black text-red-600 text-sm group-hover:hidden block">-{Number(e.amount).toLocaleString()}đ</p>
-                  
-                  {/* Nút hành động chỉ hiện khi hover */}
-                  <div className="hidden group-hover:flex gap-1.5 animate-in fade-in zoom-in-95 duration-200">
-                    <button onClick={() => handleOpenEdit(e)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-200 transition-colors" title="Sửa khoản chi"><Pencil size={14}/></button>
-                    <button onClick={() => handleDeleteExpense(e.id)} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-200 transition-colors" title="Xóa khoản chi"><Trash2 size={14}/></button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ) : (
+                <div className="text-center py-10 text-gray-600 font-bold italic uppercase tracking-widest">Chưa có dữ liệu doanh thu</div>
+              )}
+           </div>
         </div>
+      </div>
+
+      {/* SỔ CHI TIỀN (FIX LỖI MẤT GIÁ TIỀN KHI HOVER) */}
+      <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+         <div className="flex items-center justify-between mb-6 pb-6 border-b border-dashed border-gray-200">
+            <div>
+               <h3 className="text-xl font-black uppercase tracking-tight text-gray-900 flex items-center gap-2"><Receipt className="text-red-500"/> Sổ Chi Tiền Ngoài</h3>
+               <p className="text-xs font-bold text-gray-400 uppercase mt-1">Quản lý lương, bao bì, quảng cáo...</p>
+            </div>
+            <div className="bg-red-50 text-red-600 px-4 py-2 rounded-2xl font-black text-sm border border-red-100 flex items-center gap-2">
+               <span className="hidden sm:inline">Tổng chi:</span> {stats.totalOutsideExpenses.toLocaleString()}đ
+            </div>
+         </div>
+         
+         {filteredExpenses.length === 0 ? (
+            <p className="text-center py-10 text-gray-400 font-bold uppercase tracking-widest">Không có khoản chi ngoài nào.</p>
+         ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredExpenses.map(e => (
+                <div key={e.id} className="flex justify-between items-center bg-gray-50 hover:bg-red-50/50 transition-colors p-5 rounded-3xl border border-gray-100 group relative">
+                   <div className="flex-1 truncate pr-4">
+                      <h4 className="font-black text-gray-900 uppercase truncate">{e.title || 'Chi phí ngoài'}</h4>
+                      <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase tracking-widest truncate">{new Date(e.expense_date).toLocaleDateString('vi-VN')} • {e.category}</p>
+                   </div>
+                   
+                   {/* Đã fix: Giá tiền luôn hiện, Nút nằm kế bên */}
+                   <div className="flex items-center gap-3">
+                      <span className="font-black text-red-600 text-base">-{Number(e.amount).toLocaleString()}đ</span>
+                      <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity absolute -right-2 bg-white p-1 rounded-xl shadow-lg border border-red-100">
+                         <button onClick={() => handleOpenEdit(e)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-colors" title="Sửa"><Pencil size={14}/></button>
+                         <button onClick={() => handleDeleteExpense(e.id)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-colors" title="Xóa"><Trash2 size={14}/></button>
+                      </div>
+                   </div>
+                </div>
+              ))}
+            </div>
+         )}
       </div>
 
       {/* MODAL SỬA CHI PHÍ (POPUP CỰC GỌN) */}

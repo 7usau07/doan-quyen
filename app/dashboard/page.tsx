@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts'
 import { 
   Package, DollarSign, TrendingUp, Receipt, Truck, Wallet, Scale, Droplet, X, History, ShoppingBag, FileWarning, Clock
@@ -41,7 +41,6 @@ export default function DashboardPage() {
   }
 
   const stats = useMemo(() => {
-    // --- TÍNH TỒN KHO (Vẫn tính toàn bộ vì xuất kho là mất yến rồi) ---
     const totalWeightPurchased = data.batches.reduce((sum, b) => sum + Number(b.total_weight || 0), 0)
     const totalPurchaseMoney = data.batches.reduce((sum, b) => sum + (Number(b.total_weight) * Number(b.cost_per_kg)), 0)
     
@@ -52,23 +51,18 @@ export default function DashboardPage() {
     const weightWithReceipt = data.batches.filter(b => b.has_receipt).reduce((sum, b) => sum + Number(b.total_weight || 0), 0)
     const weightWithoutReceipt = data.batches.filter(b => !b.has_receipt).reduce((sum, b) => sum + Number(b.total_weight || 0), 0)
 
-    // --- TÁCH BẠCH DÒNG TIỀN (THỰC THU vs CHỜ THU) ---
-    // 1. Chỉ lấy những đơn ĐÃ HOÀN TẤT để tính tiền thật
     const completedOrders = data.orders.filter(o => o.status === 'Hoàn tất');
-    // 2. Lấy những đơn CÒN LẠI để tính tiền dự kiến (Đang giao, Còn nợ...)
     const pendingOrders = data.orders.filter(o => o.status !== 'Hoàn tất');
 
-    // TIỀN THỰC THU (Trong túi)
     const totalRevenue = completedOrders.reduce((sum, o) => sum + Number(o.revenue || 0), 0)
     const totalTax = completedOrders.reduce((sum, o) => sum + Number(o.tax_amount || 0), 0)
     const totalShip = completedOrders.reduce((sum, o) => sum + Number(o.shipping_fee || 0), 0)
     const totalProfit = completedOrders.reduce((sum, o) => sum + Number(o.profit || 0), 0)
 
-    // TIỀN CHỜ THU (Ngoài đường)
     const pendingRevenue = pendingOrders.reduce((sum, o) => sum + Number(o.revenue || 0), 0)
     const pendingProfit = pendingOrders.reduce((sum, o) => sum + Number(o.profit || 0), 0)
 
-    // Biểu đồ cũng chỉ vẽ theo tiền ĐÃ THỰC THU
+    // Gộp dữ liệu cho Biểu Đồ
     const groupedChart: Record<string, any> = {}
     completedOrders.slice().reverse().forEach(o => {
       const d = formatDate(o.created_at)
@@ -80,7 +74,7 @@ export default function DashboardPage() {
     return { 
       totalWeightPurchased, totalPurchaseMoney, totalSoldWeight, totalLossWeight, 
       remainingWeight, totalRevenue, totalTax, totalShip, totalProfit,
-      pendingRevenue, pendingProfit, // Trả ra thêm 2 biến này
+      pendingRevenue, pendingProfit, 
       weightWithReceipt, weightWithoutReceipt,
       chartData: Object.values(groupedChart)
     }
@@ -115,7 +109,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* LƯỚI 9 CHỈ SỐ KINH DOANH */}
+      {/* LƯỚI 9 CHỈ SỐ KINH DOANH (GIỮ NGUYÊN MÀU SẾP THÍCH) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         <MetricCard title="Tổng kg yến nhập" value={`${stats.totalWeightPurchased.toFixed(3)} kg`} icon={<Package size={20}/>} color="bg-slate-800" onClick={() => setSelectedMetric({title: 'Lịch sử nhập lô', type: 'batches'})} />
         <MetricCard title="Tổng kg đã xuất" value={`${stats.totalSoldWeight.toFixed(3)} kg`} icon={<ShoppingBag size={20}/>} color="bg-cyan-500" onClick={() => setSelectedMetric({title: 'Lịch sử khách mua', type: 'sold'})} />
@@ -124,7 +118,6 @@ export default function DashboardPage() {
         
         <MetricCard title="Tổng vốn đầu tư" value={`${stats.totalPurchaseMoney.toLocaleString()}đ`} icon={<DollarSign size={20}/>} color="bg-slate-700" />
         
-        {/* DOANH THU ĐÃ THÊM DÒNG CHỜ THU */}
         <MetricCard 
           title="Doanh thu (Thực thu)" 
           value={`${stats.totalRevenue.toLocaleString()}đ`} 
@@ -137,7 +130,7 @@ export default function DashboardPage() {
         <MetricCard title="Quỹ Thuế đã xuất (5%)" value={`-${stats.totalTax.toLocaleString()}đ`} icon={<Receipt size={20}/>} color="bg-orange-500" onClick={() => setSelectedMetric({title: 'Lịch sử nộp thuế', type: 'tax'})} />
         <MetricCard title="Phí ship đã xuất" value={`-${stats.totalShip.toLocaleString()}đ`} icon={<Truck size={20}/>} color="bg-purple-600" onClick={() => setSelectedMetric({title: 'Lịch sử phí ship', type: 'ship'})} />
         
-        {/* LỢI NHUẬN ĐÃ THÊM DÒNG CHỜ THU */}
+        {/* LỢI NHUẬN */}
         <div className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-4">
             <MetricCard 
               title="LỢI NHUẬN RÒNG (TRONG TÚI)" 
@@ -152,17 +145,31 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        {/* ĐÃ SỬA THÀNH BIỂU ĐỒ ĐƯỜNG (LINE CHART) ĐỂ KHÔNG BỊ BẸP CỘT LỢI NHUẬN NỮA */}
         <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm min-h-[400px]">
-          <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter mb-6">📊 Dòng tiền thực tế</h3>
+          <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter mb-6 flex items-center justify-between">
+            <span>📊 Dòng tiền thực tế</span>
+            <span className="text-[10px] bg-blue-100 text-blue-600 px-3 py-1 rounded-full tracking-widest">BIỂU ĐỒ ĐƯỜNG</span>
+          </h3>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={stats.chartData}>
+            <LineChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8', fontWeight: 'bold' }} />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8', fontWeight: 'bold' }} dy={10} />
               <YAxis tickFormatter={(v) => `${v / 1000000}M`} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8', fontWeight: 'bold' }} />
-              <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }} formatter={(v: any) => [`${Number(v).toLocaleString()}đ`]} />
-              <Bar dataKey="Doanh_thu" name="Thực Thu" fill="#d946ef" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="Loi_nhuan" name="Lãi Bỏ Túi" fill="#10b981" radius={[6, 6, 0, 0]} />
-            </BarChart>
+              
+              <Tooltip 
+                cursor={{ stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '4 4' }} 
+                contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold', fontSize: '12px' }} 
+                formatter={(value: any, name: any) => [`${Number(value).toLocaleString('vi-VN')}đ`, name]} 
+              />
+              
+              <Legend wrapperStyle={{paddingTop: '20px', fontSize: '11px', fontWeight: 'black', textTransform: 'uppercase'}} />
+              
+              {/* Thay Bar bằng Line */}
+              <Line type="monotone" dataKey="Doanh_thu" name="Thực Thu" stroke="#d946ef" strokeWidth={4} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+              <Line type="monotone" dataKey="Loi_nhuan" name="Lãi Bỏ Túi" stroke="#10b981" strokeWidth={4} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
 

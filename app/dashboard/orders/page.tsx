@@ -5,24 +5,37 @@ import Link from 'next/link'
 import * as XLSX from 'xlsx'
 import { 
   Trash2, PlusCircle, Droplet, Scale, Package, FileSpreadsheet, 
-  Printer, X, MapPin, Phone, CheckCircle2, Clock, Search, Save
+  Printer, X, MapPin, Phone, CheckCircle2, Clock, Search, Save, Pencil, Calendar, ListFilter
 } from 'lucide-react'
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([])
+  const [batches, setBatches] = useState<any[]>([]) // Thêm state lưu lô hàng để chọn khi sửa
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   
-  // Trạng thái cho việc in Hóa Đơn
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null)
 
+  // TRẠNG THÁI CHO MODAL SỬA ĐƠN HÀNG
+  const [editingOrder, setEditingOrder] = useState<any>(null)
+  const [editForm, setEditForm] = useState({
+    id: '', created_at: '', batch_id: '', grade_type: '',
+    weight: '', unitPrice: '', weight_loss: '', tax_amount: '', shipping_fee: '', status: '', note: ''
+  })
+
   const fetchOrders = async () => {
-    const { data } = await supabase
+    setLoading(true)
+    const { data: ordersData } = await supabase
       .from('orders')
-      .select('*, customers(id, name, phone, address), batches(batch_code)')
+      .select('*, customers(id, name, phone, address), batches(batch_code, cost_per_kg)')
       .order('created_at', { ascending: false });
     
-    if (data) setOrders(data);
+    if (ordersData) setOrders(ordersData);
+
+    // Lấy danh sách Lô hàng để phục vụ việc sửa đơn (chọn lại lô)
+    const { data: batchesData } = await supabase.from('batches').select('id, batch_code, cost_per_kg');
+    if (batchesData) setBatches(batchesData);
+
     setLoading(false)
   }
 
@@ -40,16 +53,72 @@ export default function OrdersPage() {
     fetchOrders(); 
   }
 
-  // CẬP NHẬT TÀI CHÍNH KÈM HAO HỤT & ĐỘ ẨM
+  // HÀM MỞ FORM SỬA ĐƠN VÀ ĐIỀN SẴN THÔNG TIN CŨ
+  const openEditModal = (order: any) => {
+    const unitPrice = order.weight > 0 ? (order.revenue / order.weight) : 0;
+    setEditForm({
+      id: order.id,
+      created_at: new Date(order.created_at).toISOString().split('T')[0],
+      batch_id: order.batch_id,
+      grade_type: order.grade_type || 'Xô',
+      weight: order.weight.toString(),
+      unitPrice: Math.round(unitPrice).toString(),
+      weight_loss: (order.weight_loss || 0).toString(),
+      tax_amount: (order.tax_amount || 0).toString(),
+      shipping_fee: (order.shipping_fee || 0).toString(),
+      status: order.status || 'Hoàn tất',
+      note: order.note || ''
+    });
+    setEditingOrder(order);
+  }
+
+  // HÀM LƯU LẠI ĐƠN HÀNG SAU KHI SỬA TOÀN DIỆN
+  const handleUpdateOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const weightNum = Number(editForm.weight) || 0;
+    const priceNum = Number(editForm.unitPrice) || 0;
+    const lossNum = Number(editForm.weight_loss) || 0;
+    const taxNum = Number(editForm.tax_amount) || 0;
+    const shipNum = Number(editForm.shipping_fee) || 0;
+
+    // Lấy giá vốn của Lô đang chọn để tính lại lợi nhuận
+    const selectedBatch = batches.find(b => b.id === editForm.batch_id);
+    const costPerKg = selectedBatch ? Number(selectedBatch.cost_per_kg) : 0;
+
+    const newCost = weightNum * costPerKg;
+    const newRevenue = weightNum * priceNum;
+    const lossCost = lossNum * costPerKg; 
+    const newProfit = newRevenue - newCost - taxNum - shipNum - lossCost;
+
+    await supabase.from('orders').update({
+      created_at: new Date(editForm.created_at).toISOString(),
+      batch_id: editForm.batch_id,
+      grade_type: editForm.grade_type,
+      weight: weightNum,
+      revenue: newRevenue,
+      cost: newCost,
+      weight_loss: lossNum,
+      tax_amount: taxNum,
+      shipping_fee: shipNum,
+      profit: newProfit,
+      status: editForm.status,
+      note: editForm.note
+    }).eq('id', editForm.id);
+
+    setEditingOrder(null);
+    fetchOrders();
+  }
+
+  // CẬP NHẬT NHANH HAO HỤT & ĐỘ ẨM TỪ NGOÀI GIAO DIỆN
   const updateFinancials = async (order: any, field: string, value: string) => {
     const valNum = Number(value) || 0;
     const currentWeightLoss = field === 'weight_loss' ? valNum : Number(order.weight_loss);
     const currentShipping = field === 'shipping_fee' ? valNum : Number(order.shipping_fee);
     
-    // Thuần túy cập nhật dữ liệu, nếu là độ ẩm thì chỉ lưu lại chứ không trừ tiền
     const dataToUpdate: any = { [field]: valNum };
 
-    // Nếu thay đổi hao hụt kg hoặc phí ship thì mới phải tính lại tiền lời
     if (field === 'weight_loss' || field === 'shipping_fee') {
         const costPerKg = Number(order.cost) / Number(order.weight);
         const moneyLostToShrinkage = currentWeightLoss * costPerKg;
@@ -85,7 +154,6 @@ export default function OrdersPage() {
     return 'bg-gray-100 text-gray-700'
   }
 
-  // XUẤT EXCEL KÈM PHÂN LOẠI & ĐỘ ẨM
   const handleExportExcel = () => {
     const exportData = orders.map((o, index) => ({
       "STT": index + 1,
@@ -221,7 +289,6 @@ export default function OrdersPage() {
                     </span>
                   </div>
                   
-                  {/* Ô NHẬP ĐỘ ẨM KHÁCH BÁO */}
                   <div className="flex justify-between items-center text-sm font-bold text-blue-600">
                     <span className="flex items-center gap-2"><Droplet size={16}/> Độ ẩm khách báo (%):</span>
                     <input 
@@ -248,7 +315,7 @@ export default function OrdersPage() {
                 </div>
 
                 {/* CỘT 3: TÀI CHÍNH */}
-                <div className="w-full lg:w-1/3 bg-blue-50/20 p-5 rounded-3xl border border-blue-50 space-y-2">
+                <div className="w-full lg:w-1/3 bg-blue-50/20 p-5 rounded-3xl border border-blue-50 space-y-2 relative">
                   <div className="flex justify-between text-sm font-bold text-gray-500">
                     <span>Tổng khách trả:</span>
                     <span className="text-gray-900">{Number(order.revenue).toLocaleString('vi-VN')}đ</span>
@@ -278,9 +345,15 @@ export default function OrdersPage() {
 
                 {/* BỘ NÚT */}
                 <div className="flex flex-row lg:flex-col gap-2 justify-end w-full lg:w-auto pt-4 lg:pt-0 border-t lg:border-t-0 border-gray-100">
+                    {/* NÚT SỬA ĐƠN HÀNG */}
+                    <button onClick={() => openEditModal(order)} className="flex-1 lg:flex-none bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-2xl flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-200 group" title="Sửa Đơn Hàng">
+                        <Pencil size={20} className="group-hover:scale-110 transition-transform" /> <span className="text-xs font-black uppercase tracking-widest lg:hidden">Sửa Đơn</span>
+                    </button>
+
                     <button onClick={() => setSelectedInvoice(order)} className="flex-1 lg:flex-none bg-gray-900 hover:bg-black text-white p-4 rounded-2xl flex items-center justify-center gap-2 transition-colors shadow-md" title="In Hóa Đơn">
                         <Printer size={20} /> <span className="text-xs font-black uppercase lg:hidden">In Bill</span>
                     </button>
+
                     <button onClick={() => deleteOrder(order.id)} className="p-4 bg-red-50 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-2xl transition-all flex items-center justify-center" title="Xóa Đơn">
                         <Trash2 size={20} />
                     </button>
@@ -296,6 +369,86 @@ export default function OrdersPage() {
           </div>
         )}
       </div>
+
+      {/* --- MODAL SỬA ĐƠN HÀNG --- */}
+      {editingOrder && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in no-print">
+          <div className="bg-white rounded-[40px] p-8 w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl relative animate-in zoom-in-95 custom-scrollbar">
+            <button onClick={() => setEditingOrder(null)} className="absolute top-6 right-6 bg-gray-100 p-2 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors"><X size={20}/></button>
+            <h2 className="text-3xl font-black uppercase tracking-tighter mb-2 text-gray-900 flex items-center gap-3">
+              <Pencil className="text-blue-600"/> Sửa Đơn Hàng VIP
+            </h2>
+            <p className="text-xs font-bold text-gray-500 mb-8 uppercase tracking-widest">Sửa Lô, Sửa Ngày, Sửa Giá - Khớp Sổ Sách 100%</p>
+            
+            <form onSubmit={handleUpdateOrder} className="space-y-6">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-blue-50/50 p-6 rounded-3xl border border-blue-100">
+                <div>
+                  <label className="flex items-center gap-2 text-[10px] font-black uppercase text-blue-600 mb-2 ml-1"><Calendar size={14}/> Ngày Bán</label>
+                  <input required type="date" className="w-full border-2 border-white rounded-2xl p-4 font-black text-gray-900 text-sm shadow-sm outline-none focus:border-blue-400 cursor-pointer" value={editForm.created_at} onChange={e => setEditForm({...editForm, created_at: e.target.value})} />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-500 mb-2 ml-1">Trạng thái giao hàng</label>
+                  <select className="w-full border-2 border-white rounded-2xl p-4 font-black text-gray-900 text-sm shadow-sm outline-none focus:border-blue-400 cursor-pointer" value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value})}>
+                     <option>Chưa giao</option><option>Đang giao</option><option>Đã giao - Còn nợ</option><option>Hoàn tất</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-purple-50/50 p-6 rounded-3xl border border-purple-100">
+                <div>
+                  <label className="flex items-center gap-2 text-[10px] font-black uppercase text-purple-600 mb-2 ml-1"><Package size={14}/> Sửa Lô Hàng</label>
+                  <select required className="w-full border-2 border-white rounded-2xl p-4 font-black text-gray-900 text-sm shadow-sm outline-none focus:border-purple-400 cursor-pointer" value={editForm.batch_id} onChange={e => setEditForm({...editForm, batch_id: e.target.value})}>
+                    <option value="">-- Chọn lại lô --</option>
+                    {batches.map(b => (<option key={b.id} value={b.id}>{b.batch_code}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-[10px] font-black uppercase text-orange-600 mb-2 ml-1"><ListFilter size={14}/> Sửa Phân Loại Yến</label>
+                  <select required className="w-full border-2 border-white rounded-2xl p-4 font-black text-gray-900 text-sm shadow-sm outline-none focus:border-orange-400 cursor-pointer" value={editForm.grade_type} onChange={e => setEditForm({...editForm, grade_type: e.target.value})}>
+                    <option value="Xô">Hàng Xô Zin</option>
+                    <option value="Đẹp">Hàng Đẹp (VIP)</option>
+                    <option value="Vừa">Hàng Vừa</option>
+                    <option value="Xấu">Hàng Xấu (Gãy/Vụn)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                 <div className="col-span-2">
+                    <label className="text-[10px] font-black uppercase text-blue-600 mb-1 block ml-2">Số Kg Xuất Bán</label>
+                    <input required type="number" step="0.001" className="w-full border-2 border-blue-100 bg-blue-50/30 rounded-2xl p-4 font-black text-blue-800 text-lg outline-none focus:border-blue-400" value={editForm.weight} onChange={e => setEditForm({...editForm, weight: e.target.value})} />
+                 </div>
+                 <div className="col-span-2">
+                    <label className="text-[10px] font-black uppercase text-green-600 mb-1 block ml-2">Giá Bán / 1kg</label>
+                    <input required type="number" className="w-full border-2 border-green-100 bg-green-50/30 rounded-2xl p-4 font-black text-green-700 text-lg outline-none focus:border-green-400" value={editForm.unitPrice} onChange={e => setEditForm({...editForm, unitPrice: e.target.value})} />
+                 </div>
+                 <div className="col-span-2 md:col-span-1">
+                    <label className="text-[10px] font-black uppercase text-red-500 mb-1 block ml-2">Kg Hao Hụt</label>
+                    <input type="number" step="0.001" className="w-full border-2 border-red-100 bg-red-50/30 rounded-2xl p-3 font-bold text-red-700 text-sm outline-none focus:border-red-400" value={editForm.weight_loss} onChange={e => setEditForm({...editForm, weight_loss: e.target.value})} />
+                 </div>
+                 <div className="col-span-2 md:col-span-1">
+                    <label className="text-[10px] font-black uppercase text-purple-500 mb-1 block ml-2">Phí Ship</label>
+                    <input type="number" className="w-full border-2 border-purple-100 bg-purple-50/30 rounded-2xl p-3 font-bold text-purple-700 text-sm outline-none focus:border-purple-400" value={editForm.shipping_fee} onChange={e => setEditForm({...editForm, shipping_fee: e.target.value})} />
+                 </div>
+                 <div className="col-span-4 md:col-span-2">
+                    <label className="text-[10px] font-black uppercase text-gray-500 mb-1 block ml-2">Ghi chú thêm</label>
+                    <input type="text" className="w-full border-2 border-gray-200 rounded-2xl p-3 font-bold text-gray-800 text-sm outline-none focus:border-gray-400" value={editForm.note} onChange={e => setEditForm({...editForm, note: e.target.value})} />
+                 </div>
+              </div>
+
+              {/* TÍNH TOÁN NHANH TRONG MODAL */}
+              <div className="bg-gray-900 p-5 rounded-3xl mt-4 flex justify-between items-center shadow-inner">
+                 <div className="text-gray-400 text-xs font-black uppercase">Khách phải trả: <br/><span className="text-white text-lg">{ (Number(editForm.weight) * Number(editForm.unitPrice)).toLocaleString() }đ</span></div>
+                 <button type="submit" disabled={loading} className="bg-blue-600 text-white font-black uppercase tracking-widest px-8 py-4 rounded-2xl hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/50">
+                   {loading ? 'Đang lưu...' : 'Lưu Thay Đổi'}
+                 </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* --- MODAL HÓA ĐƠN PDF --- */}
       {selectedInvoice && (
@@ -334,8 +487,8 @@ export default function OrdersPage() {
 
                 <div className="mb-8 p-5 bg-gray-50 rounded-2xl border border-gray-100">
                    <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3 flex items-center justify-between">
-                     <span>Thông tin khách hàng</span>
-                     <span className="text-blue-500 lowercase no-print">(*Click vào chữ để sửa*)</span>
+                      <span>Thông tin khách hàng</span>
+                      <span className="text-blue-500 lowercase no-print">(*Click vào chữ để sửa*)</span>
                    </h3>
                    <div className="grid grid-cols-2 gap-4 text-sm">
                       <div className="flex items-center gap-2">
