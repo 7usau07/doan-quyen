@@ -96,7 +96,6 @@ export default function NewOrderPage() {
     }))
   }
 
-  // --- 3 HÀM BỊ THIẾU ĐÃ ĐƯỢC THÊM LẠI VÀO ĐÂY ---
   const handleAddItem = () => {
     setCartItems([...cartItems, { id: Date.now(), batch_id: '', grade_type: 'Xô', weight: '', unitPrice: '', unitCost: '' }]);
   }
@@ -111,7 +110,6 @@ export default function NewOrderPage() {
   const handleUpdateItem = (itemId: number, field: string, value: string) => {
     setCartItems(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item))
   }
-  // ----------------------------------------------
 
   const calculateTotals = () => {
     let totalCost = 0; let totalRevenue = 0;
@@ -163,7 +161,7 @@ export default function NewOrderPage() {
             weight: weightNum, cost: itemCost, revenue: itemRevenue,
             profit: itemProfit, status: customerForm.status, 
             tax_amount: itemTax, shipping_fee: itemShip, note: itemNote,
-            seller: customerForm.seller, // ĐẨY NGƯỜI BÁN LÊN DATABASE
+            seller: customerForm.seller,
             created_at: new Date(customerForm.orderDate).toISOString()
         }]);
       }
@@ -174,107 +172,124 @@ export default function NewOrderPage() {
   const filteredCustomers = existingCustomers.filter(c => c.name.toLowerCase().includes(customerForm.name.toLowerCase()) || c.phone?.includes(customerForm.name));
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto bg-gray-50 min-h-screen relative pb-24 md:pb-20 animate-in fade-in">
-      <button onClick={() => router.back()} className="flex items-center gap-2 text-gray-400 hover:text-black mb-6 md:mb-10 transition-colors font-black uppercase text-xs"><ArrowLeft size={16} /> Quay lại</button>
-      <div className="mb-6 md:mb-8 text-center"><h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tighter uppercase italic">Lên Đơn Yến Mới</h1></div>
+    <div className="p-3 md:p-8 max-w-3xl mx-auto bg-gray-50 min-h-screen relative pb-20 animate-in fade-in">
+      <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-400 hover:text-black mb-4 transition-colors font-bold uppercase text-[10px] md:text-xs"><ArrowLeft size={14} /> Quay lại</button>
+      <div className="mb-5 text-center"><h1 className="text-2xl md:text-4xl font-black text-gray-900 tracking-tighter uppercase italic">Lên Đơn Yến Mới</h1></div>
 
-      <form onSubmit={handleSubmit} className="bg-white p-4 md:p-8 rounded-[30px] md:rounded-[40px] border border-gray-100 shadow-2xl space-y-6 md:space-y-8">
+      <form onSubmit={handleSubmit} className="bg-white p-4 md:p-8 rounded-[24px] md:rounded-[40px] border border-gray-200 shadow-xl space-y-6">
         
-        {/* THÔNG TIN KHÁCH HÀNG & CHỌN NGƯỜI BÁN */}
-        <div className="bg-gray-50 p-4 md:p-5 rounded-[20px] md:rounded-3xl border border-gray-200 space-y-4 relative">
+        {/* KHỐI 1: KHÁCH HÀNG & NGƯỜI BÁN NẰM CHUNG 1 HÀNG HEADER */}
+        <div className="bg-gray-50 p-4 rounded-[20px] border border-gray-200 space-y-3">
           
-          {/* Ô CHỌN NGƯỜI BÁN NỔI BẬT LÊN */}
-          <div className="absolute -top-4 right-4 md:right-8 bg-white border-2 border-blue-200 px-4 py-2 rounded-xl shadow-lg flex items-center gap-2 z-10 animate-bounce hover:animate-none">
-             <UserCircle2 size={16} className={customerForm.seller === 'Duy' ? 'text-orange-500' : 'text-pink-500'} />
-             <select className="font-black text-xs md:text-sm uppercase outline-none bg-transparent cursor-pointer" value={customerForm.seller} onChange={e => setCustomerForm({...customerForm, seller: e.target.value})}>
-                <option value="Quyên">Quyên Bán</option>
-                <option value="Duy">Sếp Duy Bán</option>
-             </select>
+          <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-1">
+             <div className="flex gap-3">
+               <label className="flex items-center gap-1.5 font-bold text-[10px] md:text-xs cursor-pointer"><input type="radio" checked={customerType === 'khach_le'} onChange={() => setCustomerType('khach_le')} className="w-3 h-3" /> Khách lẻ</label>
+               <label className="flex items-center gap-1.5 font-bold text-[10px] md:text-xs cursor-pointer text-blue-600"><input type="radio" checked={customerType === 'cong_ty'} onChange={() => setCustomerType('cong_ty')} className="w-3 h-3" /> Công ty</label>
+             </div>
+             
+             {/* ĐÃ CHUYỂN NÚT CHỌN NGƯỜI BÁN VÀO ĐÂY, VỪA VẶN KHÔNG LƠ LỬNG */}
+             <div className="bg-white border border-blue-200 px-2 py-1 rounded-lg shadow-sm flex items-center gap-1">
+                <UserCircle2 size={12} className={customerForm.seller === 'Duy' ? 'text-orange-500' : 'text-pink-500'} />
+                <select className="font-bold text-[10px] md:text-xs uppercase outline-none bg-transparent cursor-pointer" value={customerForm.seller} onChange={e => setCustomerForm({...customerForm, seller: e.target.value})}>
+                   <option value="Quyên">Quyên Chốt</option>
+                   <option value="Duy">Duy Chốt</option>
+                </select>
+             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 md:pt-0">
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 font-bold text-xs md:text-sm cursor-pointer"><input type="radio" checked={customerType === 'khach_le'} onChange={() => setCustomerType('khach_le')} /> Khách lẻ (5%)</label>
-                <label className="flex items-center gap-2 font-bold text-xs md:text-sm cursor-pointer text-blue-600"><input type="radio" checked={customerType === 'cong_ty'} onChange={() => setCustomerType('cong_ty')} /> Công ty</label>
-              </div>
-              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 text-gray-700 w-full sm:w-auto shadow-sm"><Calendar size={16} /><input type="date" required className="bg-transparent font-bold outline-none text-xs md:text-sm cursor-pointer w-full" value={customerForm.orderDate} onChange={(e) => setCustomerForm({...customerForm, orderDate: e.target.value})} /></div>
-          </div>
+          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 text-gray-700 shadow-sm w-full"><Calendar size={14} className="text-gray-400"/><input type="date" required className="bg-transparent font-bold outline-none text-xs w-full cursor-pointer" value={customerForm.orderDate} onChange={(e) => setCustomerForm({...customerForm, orderDate: e.target.value})} /></div>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative">
             <div className="relative">
-              <input required placeholder="Tên khách hàng" className="w-full border border-gray-300 rounded-xl p-3 md:p-4 font-bold text-sm outline-none focus:border-blue-500 transition-colors bg-white" value={customerForm.name} onChange={e => { setCustomerForm({...customerForm, name: e.target.value}); setShowDropdown(true); }} onFocus={() => setShowDropdown(true)} />
+              <input required placeholder="Tên khách..." className="w-full border border-gray-300 rounded-xl p-3 font-bold text-xs md:text-sm outline-none focus:border-blue-500 bg-white" value={customerForm.name} onChange={e => { setCustomerForm({...customerForm, name: e.target.value}); setShowDropdown(true); }} onFocus={() => setShowDropdown(true)} />
               {showDropdown && customerForm.name && filteredCustomers.length > 0 && (
                 <ul className="absolute z-50 w-full bg-white border shadow-xl rounded-xl mt-1 max-h-48 overflow-y-auto border-gray-100">
                   {filteredCustomers.map(c => (
                     <li key={c.id} className="p-3 hover:bg-blue-50 cursor-pointer border-b last:border-b-0" onClick={() => { setCustomerForm({...customerForm, name: c.name, phone: c.phone || '', address: c.address || ''}); setShowDropdown(false); }}>
-                      <div className="font-bold text-gray-800 text-sm">{c.name}</div><div className="text-[10px] text-gray-400 font-black uppercase">{c.phone}</div>
+                      <div className="font-bold text-gray-800 text-xs">{c.name}</div><div className="text-[9px] text-gray-400 font-black uppercase">{c.phone}</div>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
-            <input required placeholder="Số điện thoại" className="w-full border border-gray-300 rounded-xl p-3 md:p-4 font-bold text-sm outline-none focus:border-blue-500 transition-colors bg-white" value={customerForm.phone} onChange={e => setCustomerForm({...customerForm, phone: e.target.value})} />
-            <div className="sm:col-span-2 flex items-center bg-white border border-gray-300 rounded-xl px-3 focus-within:border-blue-500 transition-colors"><MapPin size={18} className="text-gray-400 shrink-0" /><input required placeholder="Địa chỉ giao hàng..." className="w-full p-3 md:p-4 font-bold text-sm outline-none bg-transparent" value={customerForm.address} onChange={e => setCustomerForm({...customerForm, address: e.target.value})} /></div>
+            <input required placeholder="Số điện thoại" className="w-full border border-gray-300 rounded-xl p-3 font-bold text-xs md:text-sm outline-none focus:border-blue-500 bg-white" value={customerForm.phone} onChange={e => setCustomerForm({...customerForm, phone: e.target.value})} />
+            <div className="sm:col-span-2 flex items-center bg-white border border-gray-300 rounded-xl px-3 focus-within:border-blue-500"><MapPin size={14} className="text-gray-400 shrink-0" /><input required placeholder="Địa chỉ giao hàng..." className="w-full p-3 font-bold text-xs md:text-sm outline-none bg-transparent" value={customerForm.address} onChange={e => setCustomerForm({...customerForm, address: e.target.value})} /></div>
           </div>
         </div>
 
-        {/* GIỎ HÀNG */}
-        <div className="space-y-4">
-           <div className="flex items-center justify-between border-b pb-2"><h3 className="font-black uppercase text-gray-900 tracking-tighter flex items-center gap-2 text-sm md:text-base"><ShoppingCart className="text-blue-500" size={20}/> Sản phẩm chốt bán</h3><span className="text-[10px] font-bold text-gray-400 uppercase bg-gray-100 px-2 py-1 rounded-md">{cartItems.length} Món</span></div>
+        {/* KHỐI 2: GIỎ HÀNG THU GỌN LẠI */}
+        <div className="space-y-3">
+           <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+              <h3 className="font-black uppercase text-gray-900 flex items-center gap-1.5 text-xs md:text-sm"><ShoppingCart className="text-blue-500" size={14}/> Món hàng</h3>
+              <span className="text-[9px] font-bold text-gray-400 uppercase bg-gray-50 px-2 py-0.5 rounded border border-gray-200">{cartItems.length} Món</span>
+           </div>
+
            {cartItems.map((item) => {
               const currentBatch = activeBatches.find(b => b.id === item.batch_id);
               return (
-                 <div key={item.id} className="bg-white border-2 border-blue-50 rounded-[20px] p-4 md:p-5 relative shadow-sm group">
-                    {cartItems.length > 1 && (<button type="button" onClick={() => handleRemoveItem(item.id)} className="absolute -top-3 -right-3 bg-red-100 text-red-500 p-2 rounded-full hover:bg-red-500 hover:text-white transition-colors shadow-sm"><Trash2 size={14}/></button>)}
-                    <div className="flex flex-col md:flex-row gap-3 md:gap-4 mb-4">
-                        <div className="flex-1 flex flex-col gap-1.5">
-                            <label className="text-[10px] md:text-xs font-black uppercase text-purple-600 flex items-center gap-1"><Package size={12}/> Chọn Lô Yến Kho</label>
-                            <select required className="bg-purple-50 border border-purple-100 rounded-xl p-3 font-bold text-purple-900 outline-none w-full text-xs md:text-sm cursor-pointer shadow-inner" value={item.batch_id} onChange={(e) => handleBatchChange(item.id, e.target.value)}>
-                               <option value="">-- Bấm chọn Lô --</option>
+                 <div key={item.id} className="bg-white border-2 border-gray-100 rounded-[20px] p-3 md:p-4 relative shadow-sm">
+                    {cartItems.length > 1 && (<button type="button" onClick={() => handleRemoveItem(item.id)} className="absolute -top-2 -right-2 bg-red-100 text-red-500 p-1.5 rounded-full hover:bg-red-500 hover:text-white shadow-sm"><Trash2 size={12}/></button>)}
+                    
+                    <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                        <div className="flex-1 flex flex-col gap-1">
+                            <label className="text-[9px] font-bold uppercase text-purple-600 flex items-center gap-1"><Package size={10}/> Chọn Lô Kho</label>
+                            <select required className="bg-purple-50 border border-purple-100 rounded-lg p-2 font-bold text-purple-900 outline-none w-full text-xs cursor-pointer" value={item.batch_id} onChange={(e) => handleBatchChange(item.id, e.target.value)}>
+                               <option value="">-- Bấm chọn --</option>
                                {activeBatches.map(b => (<option key={b.id} value={b.id}>{b.batch_code} (Còn: Xô {b.remain_xo > 0 ? b.remain_xo.toFixed(1) : 0} | Đẹp {b.remain_dep > 0 ? b.remain_dep.toFixed(1) : 0} | Vừa {b.remain_vua > 0 ? b.remain_vua.toFixed(1) : 0} | Xấu {b.remain_xau > 0 ? b.remain_xau.toFixed(1) : 0})</option>))}
                             </select>
                         </div>
-                        <div className="flex-1 flex flex-col gap-1.5">
-                            <label className="text-[10px] md:text-xs font-black uppercase text-orange-600 flex items-center gap-1"><ListFilter size={12}/> Phân Loại</label>
-                            <select className="bg-orange-50 border border-orange-100 rounded-xl p-3 font-bold text-orange-900 outline-none w-full text-xs md:text-sm cursor-pointer shadow-inner disabled:opacity-50" value={item.grade_type} onChange={(e) => handleGradeChange(item.id, e.target.value)} disabled={!item.batch_id}>
+                        <div className="flex-1 flex flex-col gap-1">
+                            <label className="text-[9px] font-bold uppercase text-orange-500 flex items-center gap-1"><ListFilter size={10}/> Loại</label>
+                            <select className="bg-orange-50 border border-orange-100 rounded-lg p-2 font-bold text-orange-900 outline-none w-full text-xs cursor-pointer disabled:opacity-50" value={item.grade_type} onChange={(e) => handleGradeChange(item.id, e.target.value)} disabled={!item.batch_id}>
                                <option value="Xô" disabled={currentBatch && currentBatch.remain_xo <= 0}>Xô Zin</option><option value="Đẹp" disabled={currentBatch && currentBatch.remain_dep <= 0}>Hàng Đẹp</option><option value="Vừa" disabled={currentBatch && currentBatch.remain_vua <= 0}>Hàng Vừa</option><option value="Xấu" disabled={currentBatch && currentBatch.remain_xau <= 0}>Hàng Xấu</option>
                             </select>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 items-end">
-                       <div className="col-span-2 md:col-span-2"><label className="text-[10px] md:text-xs font-black uppercase text-blue-600 mb-1 block">Số Kg Xuất</label><input required type="number" step="0.001" placeholder="VD: 0.5" className="w-full border-2 border-blue-100 bg-white rounded-xl p-3 text-base md:text-lg font-black text-blue-700 outline-none focus:border-blue-400 text-center" value={item.weight} onChange={(e) => handleUpdateItem(item.id, 'weight', e.target.value)} /></div>
-                       <div className="col-span-1 md:col-span-1"><label className="text-[9px] md:text-[10px] font-black uppercase text-gray-400 mb-1 block">Giá vốn (Tự tính)</label><input required type="number" className="w-full border border-gray-200 bg-gray-50/50 rounded-xl p-3 text-xs md:text-sm font-bold text-gray-500 outline-none text-center" value={item.unitCost} readOnly /></div>
-                       <div className="col-span-1 md:col-span-1"><label className="text-[9px] md:text-[10px] font-black uppercase text-green-600 mb-1 block">Giá Bán/1kg</label><input required type="number" placeholder="VNĐ" className="w-full border-2 border-green-100 bg-white rounded-xl p-3 text-xs md:text-sm font-black text-green-700 outline-none focus:border-green-400 text-center" value={item.unitPrice} onChange={(e) => handleUpdateItem(item.id, 'unitPrice', e.target.value)} /></div>
+
+                    <div className="grid grid-cols-3 gap-2 items-end">
+                       <div className="col-span-1">
+                          <label className="text-[9px] font-bold uppercase text-blue-600 mb-1 block text-center">Số Kg Xuất</label>
+                          <input required type="number" step="0.001" placeholder="VD: 0.5" className="w-full border-2 border-blue-100 bg-white rounded-lg p-2 text-sm font-black text-blue-700 outline-none focus:border-blue-400 text-center" value={item.weight} onChange={(e) => handleUpdateItem(item.id, 'weight', e.target.value)} />
+                       </div>
+                       <div className="col-span-1">
+                          <label className="text-[8px] font-bold uppercase text-gray-400 mb-1 block text-center">Giá vốn (/kg)</label>
+                          <input required type="number" className="w-full border border-gray-100 bg-gray-50 rounded-lg p-2 text-[10px] font-bold text-gray-400 outline-none text-center" value={item.unitCost} readOnly />
+                       </div>
+                       <div className="col-span-1">
+                          <label className="text-[9px] font-bold uppercase text-green-600 mb-1 block text-center">Giá Bán (/kg)</label>
+                          <input required type="number" placeholder="VNĐ" className="w-full border-2 border-green-100 bg-white rounded-lg p-2 text-xs font-black text-green-700 outline-none focus:border-green-400 text-center" value={item.unitPrice} onChange={(e) => handleUpdateItem(item.id, 'unitPrice', e.target.value)} />
+                       </div>
                     </div>
                  </div>
               )
            })}
-           <button type="button" onClick={handleAddItem} className="w-full border-2 border-dashed border-blue-200 text-blue-600 bg-blue-50/30 hover:bg-blue-50 p-3 md:p-4 rounded-[20px] flex justify-center items-center gap-2 font-black uppercase tracking-widest text-[10px] md:text-xs transition-colors"><PlusCircle size={16}/> Thêm Lô yến khác vào đơn</button>
+           <button type="button" onClick={handleAddItem} className="w-full border border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 p-2.5 rounded-xl flex justify-center items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] transition-colors"><PlusCircle size={14}/> Thêm kiện khác</button>
         </div>
 
-        {/* THÔNG TIN GIAO HÀNG */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 bg-gray-50 p-4 md:p-5 rounded-[20px] md:rounded-3xl border border-gray-200">
-          <div className="col-span-1"><label className="text-[10px] md:text-xs font-black text-gray-500 uppercase mb-1 block">Tình trạng</label><select className="w-full border rounded-xl p-3 font-bold text-sm outline-none bg-white" value={customerForm.status} onChange={e => setCustomerForm({...customerForm, status: e.target.value})}><option>Chưa giao</option><option>Đang giao</option><option>Đã giao - Còn nợ</option><option>Hoàn tất</option></select></div>
-          <div className="col-span-1"><label className="text-[10px] md:text-xs font-black text-purple-600 uppercase mb-1 block">Phí Ship (VNĐ)</label><input type="number" placeholder="0" className="w-full border border-purple-200 bg-white rounded-xl p-3 font-bold text-sm text-purple-700 outline-none focus:border-purple-400" value={customerForm.shippingFee} onChange={e => setCustomerForm({...customerForm, shippingFee: e.target.value})} /></div>
-          <div className="col-span-1 sm:col-span-2 md:col-span-3"><label className="text-[10px] md:text-xs font-black text-orange-500 uppercase mb-1 block">Ghi chú cho cả đơn</label><input type="text" placeholder="VD: Giao hỏa tốc..." className="w-full border border-orange-200 bg-white rounded-xl p-3 font-bold text-sm text-orange-800 outline-none focus:border-orange-400" value={customerForm.note} onChange={e => setCustomerForm({...customerForm, note: e.target.value})} /></div>
+        {/* KHỐI 3: GIAO HÀNG */}
+        <div className="grid grid-cols-2 gap-3 bg-gray-50 p-4 rounded-[20px] border border-gray-200">
+          <div className="col-span-1"><label className="text-[9px] font-bold text-gray-500 uppercase mb-1 block">Tình trạng</label><select className="w-full border border-gray-300 rounded-lg p-2.5 font-bold text-xs outline-none bg-white" value={customerForm.status} onChange={e => setCustomerForm({...customerForm, status: e.target.value})}><option>Chưa giao</option><option>Đang giao</option><option>Đã giao - Còn nợ</option><option>Hoàn tất</option></select></div>
+          <div className="col-span-1"><label className="text-[9px] font-bold text-purple-600 uppercase mb-1 block">Phí Ship (VNĐ)</label><input type="number" placeholder="0" className="w-full border border-purple-200 bg-white rounded-lg p-2.5 font-bold text-xs text-purple-700 outline-none focus:border-purple-400" value={customerForm.shippingFee} onChange={e => setCustomerForm({...customerForm, shippingFee: e.target.value})} /></div>
+          <div className="col-span-2"><label className="text-[9px] font-bold text-orange-500 uppercase mb-1 block">Ghi chú vận chuyển</label><input type="text" placeholder="Giao hỏa tốc, bọc kỹ..." className="w-full border border-orange-200 bg-white rounded-lg p-2.5 font-medium text-xs text-orange-800 outline-none focus:border-orange-400" value={customerForm.note} onChange={e => setCustomerForm({...customerForm, note: e.target.value})} /></div>
         </div>
 
-        {/* TỔNG KẾT */}
-        <div className="bg-gray-900 p-5 md:p-8 rounded-[25px] md:rounded-[40px] shadow-2xl space-y-3 border-t-4 border-blue-500 relative overflow-hidden">
-            <div className="absolute -right-10 -bottom-10 opacity-10 text-white"><ShoppingCart size={150}/></div>
-            <div className="relative z-10 space-y-3 md:space-y-4 border-b border-gray-700 pb-4 md:pb-5">
-                <div className="flex justify-between items-center text-sm md:text-base font-bold text-gray-300 uppercase"><span>Doanh thu ({cartItems.length} món):</span><span className="text-white">{totals.totalRevenue.toLocaleString('vi-VN')}đ</span></div>
-                <div className="flex justify-between items-center text-[10px] md:text-xs font-black text-gray-400"><span>- Vốn nhập yến:</span><span>-{totals.totalCost.toLocaleString('vi-VN')}đ</span></div>
-                {totals.taxAmount > 0 && (<div className="flex justify-between items-center text-[10px] md:text-xs font-black text-red-400"><span>- Thuế cá nhân (5%):</span><span>-{totals.taxAmount.toLocaleString('vi-VN')}đ</span></div>)}
-                {totals.shippingFeeNum > 0 && (<div className="flex justify-between items-center text-[10px] md:text-xs font-black text-purple-400"><span>- Phí vận chuyển:</span><span>-{totals.shippingFeeNum.toLocaleString('vi-VN')}đ</span></div>)}
+        {/* TỔNG KẾT & NÚT CHỐT */}
+        <div className="bg-gray-900 p-5 rounded-[24px] shadow-2xl space-y-3 border-t-4 border-blue-500 relative overflow-hidden">
+            <div className="absolute -right-8 -bottom-8 opacity-10 text-white"><ShoppingCart size={100}/></div>
+            <div className="relative z-10 space-y-2 border-b border-gray-700 pb-3">
+                <div className="flex justify-between items-center text-xs md:text-sm font-bold text-gray-300 uppercase"><span>Doanh thu ({cartItems.length}):</span><span className="text-white text-sm md:text-base">{totals.totalRevenue.toLocaleString('vi-VN')}đ</span></div>
+                <div className="flex justify-between items-center text-[9px] md:text-[10px] font-bold text-gray-400"><span>- Vốn nhập yến:</span><span>-{totals.totalCost.toLocaleString('vi-VN')}đ</span></div>
+                {totals.taxAmount > 0 && (<div className="flex justify-between items-center text-[9px] md:text-[10px] font-bold text-red-400"><span>- Thuế (5%):</span><span>-{totals.taxAmount.toLocaleString('vi-VN')}đ</span></div>)}
+                {totals.shippingFeeNum > 0 && (<div className="flex justify-between items-center text-[9px] md:text-[10px] font-bold text-purple-400"><span>- Phí ship:</span><span>-{totals.shippingFeeNum.toLocaleString('vi-VN')}đ</span></div>)}
             </div>
-            <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center pt-2 gap-1 md:gap-2">
-                <span className="text-[10px] md:text-xs font-black uppercase text-blue-400 tracking-widest">Tiền lãi thu về:</span>
-                <span className="text-2xl md:text-4xl font-black text-green-400 tracking-tighter">+{totals.expectedProfit.toLocaleString('vi-VN')}đ</span>
+            <div className="relative z-10 flex justify-between items-end pt-1">
+                <span className="text-[10px] md:text-xs font-black uppercase text-blue-400 tracking-widest">Tiền Lãi:</span>
+                <span className="text-xl md:text-3xl font-black text-green-400 tracking-tighter">+{totals.expectedProfit.toLocaleString('vi-VN')}đ</span>
             </div>
         </div>
-        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-4 md:py-5 rounded-[20px] md:rounded-[30px] font-black text-base md:text-xl hover:bg-blue-700 transition-all shadow-xl uppercase tracking-widest disabled:opacity-50 flex items-center justify-center gap-2">
-            {loading ? 'Đang xử lý...' : <><CheckCircle2/> Chốt Toàn Bộ Đơn</>}
+
+        <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-[20px] font-black text-sm md:text-base hover:bg-blue-700 transition-all shadow-xl uppercase tracking-widest disabled:opacity-50 flex items-center justify-center gap-2">
+            {loading ? 'Đang xử lý...' : <><CheckCircle2 size={18}/> Chốt Đơn Hàng</>}
         </button>
       </form>
     </div>

@@ -1,32 +1,32 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { 
   Landmark, Users, HandCoins, History, X, PlusCircle, 
   Wallet, CheckCircle2, AlertCircle, CalendarClock, ArrowRightLeft,
-  Pencil, Trash2 // Thêm icon Sửa & Xóa
+  Pencil, Trash2, ArrowRightCircle
 } from 'lucide-react'
 
 export default function DebtsPage() {
   const [debts, setDebts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [showAddForm, setShowAddForm] = useState(false)
   
   // Modals
-  const [paymentModal, setPaymentModal] = useState<any>(null)
-  const [historyModal, setHistoryModal] = useState<any>(null)
-  const [editingDebt, setEditingDebt] = useState<any>(null) // Thêm state cho Sửa Nợ
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [selectedPerson, setSelectedPerson] = useState<any>(null) // Modal liệt kê chi tiết từng món nợ của 1 người
+  const [paymentModal, setPaymentModal] = useState<any>(null) // Modal Ghi chép thanh toán
+  const [editingDebt, setEditingDebt] = useState<any>(null)
 
   // FORM TẠO MỚI
   const [form, setForm] = useState({
     target_name: '', debt_type: 'vay_vao', item_type: 'tien',
-    total_amount: '', interest_day: '', interest_amount: '', note: ''
+    total_amount: '', interest_day: '', interest_amount: '', note: '', start_date: new Date().toISOString().split('T')[0]
   })
 
   // FORM SỬA
   const [editForm, setEditForm] = useState({
     target_name: '', debt_type: 'vay_vao', item_type: 'tien',
-    total_amount: '', interest_day: '', interest_amount: '', note: ''
+    total_amount: '', interest_day: '', interest_amount: '', note: '', start_date: ''
   })
 
   // FORM GHI CHÉP
@@ -35,12 +35,45 @@ export default function DebtsPage() {
   })
 
   const fetchDebts = async () => {
+    setLoading(true)
     const { data } = await supabase.from('debts').select('*, debt_transactions(*)').order('created_at', { ascending: false })
     if (data) setDebts(data)
     setLoading(false)
   }
 
   useEffect(() => { fetchDebts() }, [])
+
+  // THUẬT TOÁN GỘP CÔNG NỢ THEO TÊN VÀ LOẠI
+  const groupedDebts = useMemo(() => {
+    const groups: Record<string, any> = {}
+    
+    debts.forEach(d => {
+      const rawName = d.target_name || 'Không tên'
+      const nameKey = rawName.trim().toLowerCase()
+      // Gom theo Tên + Loại (Vay / Cho vay) + Loại tài sản (Tiền / Yến)
+      const groupKey = `${nameKey}_${d.debt_type}_${d.item_type}` 
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          groupKey,
+          displayName: rawName.trim(),
+          debt_type: d.debt_type,
+          item_type: d.item_type,
+          totalOriginal: 0,
+          totalRemaining: 0,
+          items: [] 
+        }
+      }
+      
+      groups[groupKey].totalOriginal += Number(d.total_amount || 0)
+      groups[groupKey].totalRemaining += Number(d.remaining_amount || 0)
+      groups[groupKey].items.push(d)
+    })
+
+    // Sắp xếp: Ai còn nợ nhiều đưa lên đầu
+    return Object.values(groups).sort((a, b) => b.totalRemaining - a.totalRemaining)
+  }, [debts])
+
 
   // 1. TẠO KHOẢN NỢ MỚI
   const handleAddDebt = async (e: React.FormEvent) => {
@@ -52,13 +85,14 @@ export default function DebtsPage() {
       total_amount: amount, remaining_amount: amount, 
       interest_day: form.interest_day ? Number(form.interest_day) : null,
       interest_amount: form.interest_amount ? Number(form.interest_amount) : 0,
-      note: form.note
+      note: form.note,
+      start_date: form.start_date || new Date().toISOString()
     }])
-    setForm({ target_name: '', debt_type: 'vay_vao', item_type: 'tien', total_amount: '', interest_day: '', interest_amount: '', note: '' })
+    setForm({ target_name: '', debt_type: 'vay_vao', item_type: 'tien', total_amount: '', interest_day: '', interest_amount: '', note: '', start_date: new Date().toISOString().split('T')[0] })
     setShowAddForm(false); fetchDebts()
   }
 
-  // 2. MỞ FORM SỬA KHOẢN NỢ
+  // 2. MỞ FORM SỬA KHOẢN NỢ (Bên trong chi tiết Person)
   const openEditModal = (d: any) => {
     setEditingDebt(d);
     setEditForm({
@@ -68,7 +102,8 @@ export default function DebtsPage() {
       total_amount: d.total_amount.toString(),
       interest_day: d.interest_day ? d.interest_day.toString() : '',
       interest_amount: d.interest_amount ? d.interest_amount.toString() : '',
-      note: d.note || ''
+      note: d.note || '',
+      start_date: d.start_date ? new Date(d.start_date).toISOString().split('T')[0] : ''
     });
   }
 
@@ -78,7 +113,6 @@ export default function DebtsPage() {
     setLoading(true);
 
     const newTotal = Number(editForm.total_amount);
-    // Tính lại số tiền còn nợ (đề phòng trường hợp mày nhập sai tiền gốc)
     const diff = newTotal - Number(editingDebt.total_amount);
     let newRemaining = Number(editingDebt.remaining_amount) + diff;
     if (newRemaining < 0) newRemaining = 0;
@@ -92,18 +126,23 @@ export default function DebtsPage() {
       interest_day: editForm.interest_day ? Number(editForm.interest_day) : null,
       interest_amount: editForm.interest_amount ? Number(editForm.interest_amount) : 0,
       note: editForm.note,
+      start_date: editForm.start_date,
       status: newRemaining <= 0 ? 'hoan_tat' : 'dang_no'
     }).eq('id', editingDebt.id);
 
     setEditingDebt(null);
+    
+    // Tắt modal chi tiết người luôn để lấy data mới cho an toàn
+    setSelectedPerson(null);
     fetchDebts();
   }
 
   // 4. XÓA KHOẢN NỢ
   const handleDeleteDebt = async (id: string) => {
-    if (confirm("Duy chắc chắn muốn xóa hẳn sổ nợ này không? Mọi lịch sử thu/chi của sổ này cũng sẽ bị xóa vĩnh viễn!")) {
+    if (confirm("Duy chắc chắn muốn xóa hẳn sổ nợ này không? Mọi lịch sử thu/chi cũng sẽ bị xóa vĩnh viễn!")) {
       setLoading(true);
       await supabase.from('debts').delete().eq('id', id);
+      setSelectedPerson(null);
       fetchDebts();
     }
   }
@@ -130,11 +169,13 @@ export default function DebtsPage() {
     }
 
     setPayForm({ amount: '', transaction_type: 'tra_goc', transaction_date: new Date().toISOString().split('T')[0], note: '' })
-    setPaymentModal(null); fetchDebts()
+    setPaymentModal(null); 
+    setSelectedPerson(null); // Đóng lại để re-fetch cho an toàn
+    fetchDebts()
   }
 
-  const myDebts = debts.filter(d => d.debt_type === 'vay_vao') 
-  const othersDebts = debts.filter(d => d.debt_type === 'cho_vay') 
+  const myDebts = groupedDebts.filter(g => g.debt_type === 'vay_vao') 
+  const othersDebts = groupedDebts.filter(g => g.debt_type === 'cho_vay') 
 
   const getNextInterestDate = (day: number) => {
     const today = new Date();
@@ -145,310 +186,311 @@ export default function DebtsPage() {
     return `Ngày ${day} tháng ${finalMonth}/${year}`;
   }
 
-  const openPaymentModal = (d: any) => {
-    setPaymentModal(d);
-    setPayForm({
-        amount: '', 
-        transaction_type: 'tra_goc', 
-        transaction_date: new Date().toISOString().split('T')[0], 
-        note: ''
-    });
-  }
-
-  if (loading && debts.length === 0) return <div className="p-10 font-black animate-pulse text-gray-400 text-center uppercase tracking-widest">Đang lật sổ công nợ...</div>
+  if (loading && debts.length === 0) return <div className="p-10 font-black animate-pulse text-gray-400 text-center uppercase tracking-widest text-sm">Đang lật sổ công nợ...</div>
 
   return (
-    <div className="p-6 space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto pb-20">
+    <div className="p-4 md:p-8 space-y-6 md:space-y-8 animate-in fade-in duration-500 max-w-7xl mx-auto pb-24 font-sans bg-gray-50 min-h-screen">
       
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-gray-900 text-white p-8 rounded-[40px] shadow-2xl gap-6">
+      {/* HEADER TỐI ƯU MOBILE */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-gray-900 text-white p-6 md:p-8 rounded-[24px] md:rounded-[40px] shadow-xl gap-5">
         <div>
-          <h1 className="text-3xl font-black uppercase tracking-tighter flex items-center gap-3"><Landmark size={32} className="text-blue-400"/> Sổ Công Nợ ĐOÀN QUYÊN</h1>
-          <p className="text-gray-400 font-bold mt-1 tracking-widest uppercase text-[10px]">Kiểm soát gốc, lãi suất & Lịch sử trả nợ</p>
+          <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter flex items-center gap-2 md:gap-3"><Landmark size={28} className="text-blue-400"/> Sổ Công Nợ</h1>
+          <p className="text-gray-400 font-bold mt-1.5 tracking-widest uppercase text-[10px] md:text-xs">Gộp Nhóm • Kiểm soát gốc & Lãi suất</p>
         </div>
-        <button onClick={() => setShowAddForm(!showAddForm)} className="bg-blue-600 hover:bg-blue-500 px-6 py-4 rounded-2xl font-black shadow-lg uppercase text-xs flex items-center gap-2">
-          {showAddForm ? 'Hủy bỏ' : <><PlusCircle size={18}/> Thêm Khoản Nợ / Cho Vay</>}
+        <button onClick={() => setShowAddForm(!showAddForm)} className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 px-5 py-3.5 rounded-xl font-black shadow-md uppercase text-[11px] md:text-xs flex justify-center items-center gap-2 transition-all">
+          {showAddForm ? 'Đóng Form' : <><PlusCircle size={16}/> Thêm Khoản Vay</>}
         </button>
       </div>
 
       {showAddForm && (
-        <form onSubmit={handleAddDebt} className="bg-white p-8 rounded-[40px] border border-gray-200 shadow-sm space-y-6">
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <form onSubmit={handleAddDebt} className="bg-white p-6 md:p-8 rounded-[24px] md:rounded-[30px] border border-gray-200 shadow-sm space-y-5 animate-in slide-in-from-top-4">
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               
-              <div className="space-y-4 bg-gray-50 p-6 rounded-3xl border">
-                 <h3 className="font-black text-gray-800 uppercase tracking-tighter border-b pb-2">1. Phân loại khoản vay</h3>
-                 <div className="flex gap-4">
-                    <label className="flex items-center gap-2 font-bold cursor-pointer text-red-600"><input type="radio" checked={form.debt_type === 'vay_vao'} onChange={() => setForm({...form, debt_type: 'vay_vao'})} className="accent-red-500 w-4 h-4"/> Mình Đi Vay (Nợ người ta)</label>
-                    <label className="flex items-center gap-2 font-bold cursor-pointer text-blue-600"><input type="radio" checked={form.debt_type === 'cho_vay'} onChange={() => setForm({...form, debt_type: 'cho_vay'})} className="accent-blue-500 w-4 h-4"/> Mình Cho Vay (Người ta nợ)</label>
+              <div className="space-y-4 bg-gray-50 p-5 rounded-2xl border border-gray-100">
+                 <h3 className="font-black text-gray-800 uppercase tracking-tighter border-b border-gray-200 pb-2 text-sm">1. Phân loại</h3>
+                 <div className="flex flex-col gap-3">
+                    <label className="flex items-center gap-2.5 font-bold cursor-pointer text-red-600 text-sm"><input type="radio" checked={form.debt_type === 'vay_vao'} onChange={() => setForm({...form, debt_type: 'vay_vao'})} className="accent-red-500 w-4 h-4"/> Mình Đi Vay (Nợ người ta)</label>
+                    <label className="flex items-center gap-2.5 font-bold cursor-pointer text-blue-600 text-sm"><input type="radio" checked={form.debt_type === 'cho_vay'} onChange={() => setForm({...form, debt_type: 'cho_vay'})} className="accent-blue-500 w-4 h-4"/> Mình Cho Vay (Người ta nợ)</label>
                  </div>
-                 <div className="flex gap-4 pt-2">
-                    <label className="flex items-center gap-2 font-bold cursor-pointer text-gray-600"><input type="radio" checked={form.item_type === 'tien'} onChange={() => setForm({...form, item_type: 'tien'})} className="w-4 h-4"/> Mượn Tiền (VNĐ)</label>
-                    <label className="flex items-center gap-2 font-bold cursor-pointer text-orange-600"><input type="radio" checked={form.item_type === 'yen'} onChange={() => setForm({...form, item_type: 'yen'})} className="w-4 h-4"/> Mượn Yến (Kg)</label>
+                 <div className="flex gap-4 pt-2 border-t border-dashed border-gray-200 mt-2">
+                    <label className="flex items-center gap-2 font-bold cursor-pointer text-gray-600 text-xs"><input type="radio" checked={form.item_type === 'tien'} onChange={() => setForm({...form, item_type: 'tien'})} className="w-3.5 h-3.5"/> VNĐ</label>
+                    <label className="flex items-center gap-2 font-bold cursor-pointer text-orange-600 text-xs"><input type="radio" checked={form.item_type === 'yen'} onChange={() => setForm({...form, item_type: 'yen'})} className="w-3.5 h-3.5"/> Yến (Kg)</label>
                  </div>
               </div>
 
               <div className="space-y-4">
                  <div>
-                    <label className="text-[10px] font-black uppercase text-gray-500 ml-2">Đối tác (Ngân hàng / Tên người nhà)</label>
-                    <input required placeholder="VD: Sacombank, Mẹ, Cha..." className="w-full border rounded-2xl p-4 font-bold text-sm outline-none focus:border-blue-500 mt-1 bg-white" value={form.target_name} onChange={e => setForm({...form, target_name: e.target.value})} />
+                    <label className="text-[10px] font-black uppercase text-gray-500 ml-1">Đối tác (Ngân hàng / Tên người)</label>
+                    <input required placeholder="VD: Sacombank, Mẹ..." className="w-full border border-gray-300 rounded-xl p-3 font-bold text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 mt-1 bg-white" value={form.target_name} onChange={e => setForm({...form, target_name: e.target.value})} />
                  </div>
                  <div>
-                    <label className="text-[10px] font-black uppercase text-gray-500 ml-2">Tổng số {form.item_type === 'tien' ? 'Tiền (VNĐ)' : 'Ký Yến (Kg)'} cho mượn/vay</label>
-                    <input required type="number" step="0.001" placeholder={form.item_type === 'tien' ? '50000000' : '5.5'} className="w-full border-2 rounded-2xl p-4 font-black text-xl outline-none focus:border-blue-500 mt-1 bg-white" value={form.total_amount} onChange={e => setForm({...form, total_amount: e.target.value})} />
+                    <label className="text-[10px] font-black uppercase text-gray-500 ml-1">Ngày bắt đầu</label>
+                    <input required type="date" className="w-full border border-gray-300 rounded-xl p-3 font-bold text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 mt-1 bg-white" value={form.start_date} onChange={e => setForm({...form, start_date: e.target.value})} />
+                 </div>
+                 <div>
+                    <label className="text-[10px] font-black uppercase text-gray-500 ml-1">Tổng số {form.item_type === 'tien' ? 'Tiền (VNĐ)' : 'Ký Yến (Kg)'} gốc</label>
+                    <input required type="number" step="0.001" placeholder={form.item_type === 'tien' ? '50000000' : '5.5'} className="w-full border border-gray-300 rounded-xl p-3 font-black text-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 mt-1 bg-blue-50" value={form.total_amount} onChange={e => setForm({...form, total_amount: e.target.value})} />
                  </div>
               </div>
 
            </div>
            
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
               <div>
-                 <label className="text-[10px] font-black uppercase text-gray-500 ml-2">Ngày đóng lãi hàng tháng (1-31)</label>
-                 <input type="number" min="1" max="31" placeholder="VD: 15" className="w-full border rounded-2xl p-4 font-bold text-sm outline-none mt-1" value={form.interest_day} onChange={e => setForm({...form, interest_day: e.target.value})} />
+                 <label className="text-[10px] font-black uppercase text-gray-500 ml-1">Ngày đóng lãi hàng tháng (1-31)</label>
+                 <input type="number" min="1" max="31" placeholder="VD: 15" className="w-full border border-gray-300 rounded-xl p-3 font-bold text-sm outline-none mt-1 focus:border-blue-500" value={form.interest_day} onChange={e => setForm({...form, interest_day: e.target.value})} />
               </div>
               <div>
-                 <label className="text-[10px] font-black uppercase text-blue-500 ml-2">Số tiền lãi mỗi tháng (VNĐ)</label>
-                 <input type="number" placeholder="VD: 2000000" className="w-full border rounded-2xl p-4 font-bold text-sm outline-none mt-1 bg-blue-50 focus:border-blue-500" value={form.interest_amount} onChange={e => setForm({...form, interest_amount: e.target.value})} disabled={form.item_type === 'yen'} />
+                 <label className="text-[10px] font-black uppercase text-orange-500 ml-1">Số tiền lãi mỗi tháng (VNĐ)</label>
+                 <input type="number" placeholder="VD: 2000000" className="w-full border border-orange-200 rounded-xl p-3 font-bold text-sm outline-none mt-1 bg-orange-50 focus:border-orange-500" value={form.interest_amount} onChange={e => setForm({...form, interest_amount: e.target.value})} disabled={form.item_type === 'yen'} />
               </div>
               <div>
-                 <label className="text-[10px] font-black uppercase text-gray-500 ml-2">Ghi chú thêm</label>
-                 <input placeholder="Thế chấp sổ đỏ..." className="w-full border rounded-2xl p-4 font-bold text-sm outline-none mt-1" value={form.note} onChange={e => setForm({...form, note: e.target.value})} />
+                 <label className="text-[10px] font-black uppercase text-gray-500 ml-1">Ghi chú (Tùy chọn)</label>
+                 <input placeholder="Thế chấp..." className="w-full border border-gray-300 rounded-xl p-3 font-medium text-sm outline-none mt-1 focus:border-blue-500" value={form.note} onChange={e => setForm({...form, note: e.target.value})} />
               </div>
            </div>
 
-           <button type="submit" className="w-full bg-gray-900 text-white font-black rounded-2xl py-4 uppercase tracking-widest hover:bg-black transition-colors shadow-xl">Tạo Sổ Nợ Mới</button>
+           <button type="submit" className="w-full bg-gray-900 text-white font-black rounded-xl py-3.5 uppercase tracking-widest text-[11px] md:text-xs hover:bg-black transition-colors shadow-md mt-2">Lưu Vào Sổ</button>
         </form>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      {/* DANH SÁCH GỘP (UI CỰC KỲ GỌN GÀNG) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
          
-         <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-6 bg-red-50 p-4 rounded-3xl border border-red-100">
-               <div className="bg-red-500 p-3 rounded-2xl text-white"><HandCoins size={24}/></div>
-               <div><h2 className="text-xl font-black text-red-700 uppercase tracking-tighter">Khoản Mình Vay</h2><p className="text-[10px] font-bold text-red-500 uppercase">Ngân hàng, Cha mẹ (Phải trả)</p></div>
+         {/* CỘT NỢ NGƯỜI TA */}
+         <div className="space-y-4">
+            <div className="flex items-center gap-3 mb-5 bg-red-50 p-4 md:p-5 rounded-[24px] border border-red-100">
+               <div className="bg-red-500 p-2.5 rounded-xl text-white"><HandCoins size={20}/></div>
+               <div><h2 className="text-lg md:text-xl font-black text-red-700 uppercase tracking-tighter">Khoản Mình Vay</h2><p className="text-[9px] md:text-[10px] font-bold text-red-500 uppercase">Ngân hàng, Cha mẹ (Phải trả)</p></div>
             </div>
 
-            {myDebts.map(d => (
-              <DebtCard 
-                 key={d.id} d={d} 
-                 onPay={() => openPaymentModal(d)} 
-                 onHistory={() => setHistoryModal(d)}
-                 onEdit={() => openEditModal(d)}
-                 onDelete={() => handleDeleteDebt(d.id)}
-              />
+            {myDebts.filter(g => g.totalRemaining > 0).map(group => (
+               <GroupCard key={group.groupKey} group={group} onClick={() => setSelectedPerson(group)} />
             ))}
-            {myDebts.length === 0 && <p className="text-center font-bold text-gray-300 py-10 border-2 border-dashed rounded-3xl">Mày không mang cục nợ nào!</p>}
+            {myDebts.filter(g => g.totalRemaining > 0).length === 0 && <p className="text-center font-bold text-gray-300 py-8 border-2 border-dashed border-gray-200 rounded-[20px] text-xs">Mày không mang cục nợ nào!</p>}
          </div>
 
-         <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-6 bg-blue-50 p-4 rounded-3xl border border-blue-100">
-               <div className="bg-blue-600 p-3 rounded-2xl text-white"><Users size={24}/></div>
-               <div><h2 className="text-xl font-black text-blue-800 uppercase tracking-tighter">Khoản Cho Vay</h2><p className="text-[10px] font-bold text-blue-500 uppercase">Đối tác, Cha mẹ mượn (Chờ thu)</p></div>
+         {/* CỘT NGƯỜI TA NỢ MÌNH */}
+         <div className="space-y-4">
+            <div className="flex items-center gap-3 mb-5 bg-blue-50 p-4 md:p-5 rounded-[24px] border border-blue-100">
+               <div className="bg-blue-600 p-2.5 rounded-xl text-white"><Users size={20}/></div>
+               <div><h2 className="text-lg md:text-xl font-black text-blue-800 uppercase tracking-tighter">Khoản Cho Vay</h2><p className="text-[9px] md:text-[10px] font-bold text-blue-500 uppercase">Đối tác, Cha mẹ mượn (Chờ thu)</p></div>
             </div>
 
-            {othersDebts.map(d => (
-              <DebtCard 
-                 key={d.id} d={d} 
-                 onPay={() => openPaymentModal(d)} 
-                 onHistory={() => setHistoryModal(d)}
-                 onEdit={() => openEditModal(d)}
-                 onDelete={() => handleDeleteDebt(d.id)}
-              />
+            {othersDebts.filter(g => g.totalRemaining > 0).map(group => (
+               <GroupCard key={group.groupKey} group={group} onClick={() => setSelectedPerson(group)} />
             ))}
-            {othersDebts.length === 0 && <p className="text-center font-bold text-gray-300 py-10 border-2 border-dashed rounded-3xl">Chưa ai mượn đồ của mày!</p>}
+            {othersDebts.filter(g => g.totalRemaining > 0).length === 0 && <p className="text-center font-bold text-gray-300 py-8 border-2 border-dashed border-gray-200 rounded-[20px] text-xs">Chưa ai mượn đồ của mày!</p>}
          </div>
 
       </div>
 
+      {/* POPUP CHI TIẾT 1 NGƯỜI (Liệt kê các khoản lắt nhắt bên trong) */}
+      {selectedPerson && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center sm:p-4 backdrop-blur-sm animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:fade-in">
+          <div className="bg-white w-full sm:max-w-2xl max-h-[90vh] rounded-t-[30px] sm:rounded-[30px] flex flex-col shadow-2xl relative">
+            
+            <div className="p-5 md:p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-[30px]">
+               <div>
+                  <h2 className="text-xl md:text-2xl font-black text-gray-900 capitalize tracking-tight">{selectedPerson.displayName}</h2>
+                  <p className="text-[10px] md:text-xs font-bold text-gray-500 mt-1">Tổng Gốc Đã Vay: {selectedPerson.totalOriginal.toLocaleString('vi-VN')} {selectedPerson.item_type === 'tien' ? 'đ' : 'kg'}</p>
+               </div>
+               <button onClick={() => setSelectedPerson(null)} className="p-2 bg-white rounded-full text-gray-500 shadow-sm border border-gray-200 hover:text-gray-900"><X size={18}/></button>
+            </div>
+
+            <div className="overflow-y-auto p-4 md:p-6 space-y-4 custom-scrollbar flex-1">
+               <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                 <History size={12}/> Chi tiết các khoản nợ lắt nhắt ({selectedPerson.items.length})
+               </h3>
+               
+               {selectedPerson.items.map((item: any, index: number) => {
+                  const isPaidOff = Number(item.remaining_amount) <= 0;
+                  const unit = item.item_type === 'tien' ? 'đ' : 'kg';
+
+                  return (
+                     <div key={item.id} className={`p-4 md:p-5 rounded-[20px] border ${isPaidOff ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-blue-100 shadow-sm'}`}>
+                        <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
+                           <div>
+                              <p className="text-xs md:text-sm font-bold text-gray-900">
+                                Lần {index + 1} 
+                                <span className="text-[10px] text-gray-500 font-medium ml-1">({new Date(item.start_date || item.created_at).toLocaleDateString('vi-VN')})</span>
+                              </p>
+                              {item.note && <p className="text-[9px] text-gray-400 mt-0.5 italic">{item.note}</p>}
+                           </div>
+                           <div className="flex gap-2">
+                              <button onClick={() => openEditModal(item)} className="text-gray-400 hover:text-blue-600"><Pencil size={14}/></button>
+                              <button onClick={() => handleDeleteDebt(item.id)} className="text-gray-400 hover:text-red-500"><Trash2 size={14}/></button>
+                           </div>
+                        </div>
+
+                        <div className="flex justify-between items-end mb-3">
+                           <div>
+                              <p className="text-[10px] text-gray-500 font-bold uppercase">Gốc: {Number(item.total_amount).toLocaleString('vi-VN')}{unit}</p>
+                              <p className="text-sm md:text-base font-black text-gray-900 mt-0.5">Còn nợ: <span className={selectedPerson.debt_type === 'vay_vao' ? 'text-red-600' : 'text-emerald-600'}>{Number(item.remaining_amount).toLocaleString('vi-VN')}{unit}</span></p>
+                           </div>
+                           {!isPaidOff ? (
+                              <button onClick={() => { setPaymentModal(item); setPayForm({...payForm, amount: item.remaining_amount.toString()}) }} className="bg-gray-900 text-white text-[10px] font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 hover:bg-gray-800 shadow-sm uppercase">
+                                 <HandCoins size={14}/> Ghi Chép
+                              </button>
+                           ) : (
+                              <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">ĐÃ XONG</span>
+                           )}
+                        </div>
+
+                        {!isPaidOff && item.interest_day && item.item_type === 'tien' && (
+                           <div className="flex items-center gap-2 bg-orange-50 text-orange-700 text-[9px] font-bold p-2 rounded-lg border border-orange-100 mt-2">
+                              <CalendarClock size={12}/> Hàng tháng: {Number(item.interest_amount).toLocaleString('vi-VN')}đ (Đóng vào {getNextInterestDate(item.interest_day)})
+                           </div>
+                        )}
+
+                        {/* Lịch sử trả nợ nhỏ của khoản này */}
+                        {item.debt_transactions && item.debt_transactions.length > 0 && (
+                           <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 mt-3 space-y-1.5">
+                              {item.debt_transactions.sort((a:any, b:any) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()).map((tx: any) => (
+                                 <div key={tx.id} className="flex justify-between items-center text-[10px] border-b border-gray-200/50 last:border-0 pb-1.5 last:pb-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className={`px-1.5 rounded text-[8px] font-black uppercase ${tx.transaction_type === 'tra_lai' ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                                        {tx.transaction_type === 'tra_lai' ? 'Lãi' : 'Gốc'}
+                                      </span>
+                                      <span className="text-gray-500 font-medium">{new Date(tx.transaction_date).toLocaleDateString('vi-VN')}</span>
+                                    </div>
+                                    <span className="font-bold text-gray-800">{Number(tx.amount).toLocaleString('vi-VN')} {unit}</span>
+                                 </div>
+                              ))}
+                           </div>
+                        )}
+                     </div>
+                  )
+               })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- MODAL CHỈNH SỬA KHOẢN NỢ --- */}
       {editingDebt && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[40px] p-8 w-full max-w-2xl shadow-2xl relative animate-in zoom-in-95">
-            <button onClick={() => setEditingDebt(null)} className="absolute top-6 right-6 bg-gray-100 p-2 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors"><X size={20}/></button>
-            <h2 className="text-2xl font-black uppercase tracking-tighter mb-6 text-gray-900 flex items-center gap-2">
-              <Pencil className="text-blue-500"/> Sửa thông tin sổ nợ
+        <div className="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[30px] p-6 w-full max-w-md shadow-2xl relative animate-in zoom-in-95">
+            <button onClick={() => setEditingDebt(null)} className="absolute top-5 right-5 bg-gray-100 p-1.5 rounded-full text-gray-500"><X size={18}/></button>
+            <h2 className="text-lg font-black uppercase mb-4 text-gray-900 flex items-center gap-2 border-b pb-3">
+              <Pencil className="text-blue-500" size={18}/> Sửa thông tin gốc
             </h2>
             
-            <form onSubmit={handleUpdateDebt} className="space-y-6">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                     <div>
-                        <label className="text-[10px] font-black uppercase text-gray-500 ml-2">Đối tác (Tên người nhà/NH)</label>
-                        <input required className="w-full border rounded-2xl p-4 font-bold text-sm outline-none focus:border-blue-500 mt-1" value={editForm.target_name} onChange={e => setEditForm({...editForm, target_name: e.target.value})} />
-                     </div>
-                     <div>
-                        <label className="text-[10px] font-black uppercase text-gray-500 ml-2">Tổng Mượn Gốc Ban Đầu</label>
-                        <input required type="number" step="0.001" className="w-full border-2 border-blue-100 rounded-2xl p-4 font-black text-xl outline-none focus:border-blue-500 mt-1" value={editForm.total_amount} onChange={e => setEditForm({...editForm, total_amount: e.target.value})} />
-                     </div>
-                  </div>
-                  <div className="space-y-4">
-                     <div>
-                       <label className="text-[10px] font-black uppercase text-gray-500 ml-2">Ngày đóng lãi hàng tháng (1-31)</label>
-                       <input type="number" min="1" max="31" className="w-full border rounded-2xl p-4 font-bold text-sm outline-none mt-1" value={editForm.interest_day} onChange={e => setEditForm({...editForm, interest_day: e.target.value})} />
-                     </div>
-                     <div>
-                       <label className="text-[10px] font-black uppercase text-blue-500 ml-2">Số tiền lãi mỗi tháng (VNĐ)</label>
-                       <input type="number" className="w-full border rounded-2xl p-4 font-bold text-sm outline-none mt-1 bg-blue-50 focus:border-blue-500" value={editForm.interest_amount} onChange={e => setEditForm({...editForm, interest_amount: e.target.value})} disabled={editForm.item_type === 'yen'} />
-                     </div>
-                  </div>
+            <form onSubmit={handleUpdateDebt} className="space-y-4">
+               <div>
+                  <label className="text-[10px] font-black uppercase text-gray-500 ml-1 block">Tên người vay</label>
+                  <input required className="w-full border border-gray-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-blue-500" value={editForm.target_name} onChange={e => setEditForm({...editForm, target_name: e.target.value})} />
                </div>
                <div>
-                 <label className="text-[10px] font-black uppercase text-gray-500 ml-2">Ghi chú</label>
-                 <input className="w-full border rounded-2xl p-4 font-bold text-sm outline-none mt-1" value={editForm.note} onChange={e => setEditForm({...editForm, note: e.target.value})} />
+                  <label className="text-[10px] font-black uppercase text-gray-500 ml-1 block">Ngày bắt đầu</label>
+                  <input required type="date" className="w-full border border-gray-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-blue-500" value={editForm.start_date} onChange={e => setEditForm({...editForm, start_date: e.target.value})} />
+               </div>
+               <div>
+                  <label className="text-[10px] font-black uppercase text-gray-500 ml-1 block">Tổng Mượn Gốc Ban Đầu</label>
+                  <input required type="number" step="0.001" className="w-full border-2 border-blue-100 bg-blue-50 rounded-xl p-3 font-black text-lg outline-none focus:border-blue-500 text-blue-800" value={editForm.total_amount} onChange={e => setEditForm({...editForm, total_amount: e.target.value})} />
                </div>
                
-               <button type="submit" className="w-full bg-blue-600 text-white font-black rounded-2xl py-4 uppercase tracking-widest hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">Cập Nhật Ghi Chép</button>
+               <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-gray-500 ml-1 block">Ngày đóng lãi</label>
+                    <input type="number" min="1" max="31" className="w-full border border-gray-200 rounded-lg p-2.5 font-bold text-xs outline-none" value={editForm.interest_day} onChange={e => setEditForm({...editForm, interest_day: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black uppercase text-orange-500 ml-1 block">Tiền lãi (VNĐ)</label>
+                    <input type="number" className="w-full border border-orange-200 rounded-lg p-2.5 font-bold text-xs outline-none" value={editForm.interest_amount} onChange={e => setEditForm({...editForm, interest_amount: e.target.value})} disabled={editForm.item_type === 'yen'} />
+                  </div>
+               </div>
+               
+               <button type="submit" className="w-full bg-blue-600 text-white font-black rounded-xl py-3.5 uppercase tracking-widest text-xs mt-2 shadow-md">Lưu Thay Đổi</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* --- MODAL GHI CHÉP GIAO DỊCH --- */}
+      {/* --- MODAL GHI CHÉP THU CHI --- */}
       {paymentModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[30px] p-8 w-full max-w-md shadow-2xl relative animate-in zoom-in-95">
-            <button onClick={() => setPaymentModal(null)} className="absolute top-6 right-6 bg-gray-100 p-2 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors"><X size={20}/></button>
-            <h2 className="text-2xl font-black uppercase tracking-tighter mb-1 text-gray-900 flex items-center gap-2">
-              <ArrowRightLeft className="text-blue-500"/> Ghi chép thu/chi
-            </h2>
-            <p className="text-gray-500 font-bold text-xs mb-6">Sổ: {paymentModal.target_name} • Còn nợ gốc: <span className="text-red-500">{paymentModal.item_type === 'tien' ? Number(paymentModal.remaining_amount).toLocaleString('vi-VN') + 'đ' : paymentModal.remaining_amount + 'kg'}</span></p>
-            
-            <form onSubmit={handlePayment} className="space-y-4 bg-gray-50 p-6 rounded-3xl border border-gray-100">
-              <div>
-                <label className="text-[10px] font-black uppercase text-gray-500 mb-2 block">Loại giao dịch</label>
-                <div className="flex gap-2">
-                  <label className="flex-1 text-center bg-white border p-3 rounded-xl cursor-pointer font-bold text-sm text-blue-600 hover:border-blue-500 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-                     <input type="radio" className="hidden" checked={payForm.transaction_type === 'tra_goc'} onChange={() => setPayForm({...payForm, transaction_type: 'tra_goc', amount: ''})} /> Trừ nợ gốc
-                  </label>
-                  {paymentModal.item_type === 'tien' && paymentModal.interest_day && (
-                    <label className="flex-1 text-center bg-white border p-3 rounded-xl cursor-pointer font-bold text-sm text-orange-600 hover:border-orange-500 has-[:checked]:border-orange-500 has-[:checked]:bg-orange-50">
-                      <input type="radio" className="hidden" checked={payForm.transaction_type === 'tra_lai'} onChange={() => setPayForm({...payForm, transaction_type: 'tra_lai', amount: paymentModal.interest_amount?.toString() || ''})} /> Đóng lãi tháng
-                    </label>
-                  )}
-                </div>
-              </div>
+         <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+            <form onSubmit={handlePayment} className="bg-white p-6 md:p-8 rounded-[30px] w-full max-w-sm shadow-2xl relative animate-in zoom-in-95">
+               <button type="button" onClick={() => setPaymentModal(null)} className="absolute top-5 right-5 bg-gray-100 p-1.5 rounded-full text-gray-500"><X size={18}/></button>
+               <h3 className="font-black text-lg md:text-xl text-gray-900 mb-1 flex items-center gap-2"><ArrowRightLeft className="text-blue-500" size={20}/> Ghi chép thanh toán</h3>
+               <p className="text-[10px] md:text-xs text-gray-500 mb-5 font-medium border-b border-gray-100 pb-3">
+                  Khoản vay ngày {new Date(paymentModal.start_date || paymentModal.created_at).toLocaleDateString('vi-VN')}<br/>
+                  <span className="text-red-500 font-bold">Cần trả gốc: {Number(paymentModal.remaining_amount).toLocaleString('vi-VN')} {paymentModal.item_type === 'tien' ? 'đ' : 'kg'}</span>
+               </p>
+               
+               <div className="space-y-4">
+                  <div>
+                     <label className="text-[10px] font-black uppercase text-gray-500 block mb-1.5">Mày muốn Ghi Chép cái gì?</label>
+                     <div className="flex gap-2">
+                        <label className="flex-1 text-center bg-white border border-gray-200 p-2.5 rounded-xl cursor-pointer font-bold text-xs text-blue-600 hover:border-blue-500 has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50 transition-colors">
+                           <input type="radio" className="hidden" checked={payForm.transaction_type === 'tra_goc'} onChange={() => setPayForm({...payForm, transaction_type: 'tra_goc', amount: paymentModal.remaining_amount.toString()})} /> Trừ Gốc
+                        </label>
+                        {paymentModal.item_type === 'tien' && paymentModal.interest_day && (
+                           <label className="flex-1 text-center bg-white border border-gray-200 p-2.5 rounded-xl cursor-pointer font-bold text-xs text-orange-600 hover:border-orange-500 has-[:checked]:border-orange-500 has-[:checked]:bg-orange-50 transition-colors">
+                              <input type="radio" className="hidden" checked={payForm.transaction_type === 'tra_lai'} onChange={() => setPayForm({...payForm, transaction_type: 'tra_lai', amount: paymentModal.interest_amount?.toString() || ''})} /> Đóng Lãi
+                           </label>
+                        )}
+                     </div>
+                  </div>
 
-              <div>
-                <label className="text-[10px] font-black uppercase text-gray-500 mb-1 block">
-                    {payForm.transaction_type === 'tra_goc' ? `Số ${paymentModal.item_type === 'tien' ? 'Tiền' : 'Kg'} Gốc Trả/Thu` : 'Số Tiền Lãi Bằng Chữ Số'}
-                </label>
-                <input required type="number" step="0.001" max={payForm.transaction_type === 'tra_goc' ? paymentModal.remaining_amount : undefined} className="w-full border border-gray-200 rounded-xl p-4 font-black text-lg outline-none focus:border-blue-500" value={payForm.amount} onChange={e => setPayForm({...payForm, amount: e.target.value})} placeholder="Nhập số..." />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                   <label className="text-[10px] font-black uppercase text-gray-500 mb-1 block">Ngày giao dịch</label>
-                   <input type="date" required className="w-full border border-gray-200 rounded-xl p-3 font-bold text-sm outline-none" value={payForm.transaction_date} onChange={e => setPayForm({...payForm, transaction_date: e.target.value})} />
-                </div>
-                <div>
-                   <label className="text-[10px] font-black uppercase text-gray-500 mb-1 block">Ghi chú (Tùy chọn)</label>
-                   <input placeholder="Ghi chú..." className="w-full border border-gray-200 rounded-xl p-3 font-bold text-sm outline-none" value={payForm.note} onChange={e => setPayForm({...payForm, note: e.target.value})} />
-                </div>
-              </div>
-              
-              <button type="submit" className="w-full bg-blue-600 text-white font-black rounded-xl py-4 uppercase text-sm hover:bg-blue-700 shadow-lg shadow-blue-500/30 mt-2">Xác nhận Lưu</button>
+                  <div>
+                     <label className="text-[10px] font-black uppercase text-gray-500 mb-1 block">
+                        {payForm.transaction_type === 'tra_goc' ? `Số ${paymentModal.item_type === 'tien' ? 'Tiền' : 'Kg'} Gốc Trả` : 'Số Tiền Lãi Trả'}
+                     </label>
+                     <input required type="number" step="0.001" max={payForm.transaction_type === 'tra_goc' ? paymentModal.remaining_amount : undefined} className="w-full border-2 border-blue-100 bg-blue-50 rounded-xl p-3 font-black text-xl text-blue-800 outline-none focus:border-blue-500 text-center" value={payForm.amount} onChange={e => setPayForm({...payForm, amount: e.target.value})} />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                     <div>
+                        <label className="text-[10px] font-black uppercase text-gray-500 mb-1 block">Ngày đưa tiền</label>
+                        <input type="date" required className="w-full border border-gray-200 rounded-xl p-2.5 font-bold text-xs outline-none" value={payForm.transaction_date} onChange={e => setPayForm({...payForm, transaction_date: e.target.value})} />
+                     </div>
+                     <div>
+                        <label className="text-[10px] font-black uppercase text-gray-500 mb-1 block">Ghi chú</label>
+                        <input placeholder="CK Vietcombank..." className="w-full border border-gray-200 rounded-xl p-2.5 font-bold text-xs outline-none" value={payForm.note} onChange={e => setPayForm({...payForm, note: e.target.value})} />
+                     </div>
+                  </div>
+                  
+                  <button type="submit" className="w-full bg-gray-900 text-white font-black rounded-xl py-3.5 uppercase tracking-widest text-xs hover:bg-black transition-colors mt-2 shadow-md">Xác nhận</button>
+               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL LỊCH SỬ GIAO DỊCH --- */}
-      {historyModal && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[40px] p-8 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl relative animate-in zoom-in-95">
-            <button onClick={() => setHistoryModal(null)} className="absolute top-8 right-8 bg-gray-100 p-2 rounded-full hover:bg-red-100 hover:text-red-500 transition-colors"><X size={24}/></button>
-            <div className="mb-6 border-b pb-4">
-               <h2 className="text-2xl font-black uppercase tracking-tighter text-gray-900 flex items-center gap-2"><History className="text-gray-500"/> Lịch sử sổ: {historyModal.target_name}</h2>
-               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Liệt kê tất cả các lần đóng lãi và trừ gốc</p>
-            </div>
-            <div className="overflow-y-auto pr-2 custom-scrollbar">
-               {historyModal.debt_transactions?.length === 0 ? <p className="text-center py-10 font-bold text-gray-400">Chưa có giao dịch nào được ghi nhận.</p> : (
-                 <div className="space-y-3">
-                   {historyModal.debt_transactions?.sort((a:any, b:any) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()).map((t: any) => (
-                      <div key={t.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border hover:border-blue-200 transition-colors">
-                         <div className="flex items-center gap-4">
-                            <div className={`p-3 rounded-xl font-black text-[10px] uppercase text-white shadow-sm ${t.transaction_type === 'tra_lai' ? 'bg-orange-500' : 'bg-emerald-500'}`}>
-                               {t.transaction_type === 'tra_lai' ? 'Đóng lãi' : 'Trừ gốc'}
-                            </div>
-                            <div>
-                               <p className="font-black text-gray-900 text-sm">{new Date(t.transaction_date).toLocaleDateString('vi-VN')}</p>
-                               <p className="text-xs text-gray-500">{t.note || '---'}</p>
-                            </div>
-                         </div>
-                         <p className={`font-black text-lg ${t.transaction_type === 'tra_lai' ? 'text-orange-600' : 'text-emerald-600'}`}>
-                           {Number(t.amount).toLocaleString('vi-VN')} {historyModal.item_type === 'tien' ? 'đ' : 'kg'}
-                         </p>
-                      </div>
-                   ))}
-                 </div>
-               )}
-            </div>
-          </div>
-        </div>
+         </div>
       )}
 
     </div>
   )
 
-  // THẺ HIỂN THỊ NỢ (ĐÃ THÊM NÚT SỬA VÀ XÓA)
-  function DebtCard({ d, onPay, onHistory, onEdit, onDelete }: any) {
-    const isDone = d.status === 'hoan_tat';
-    const isMoney = d.item_type === 'tien';
-    const progress = ((d.total_amount - d.remaining_amount) / d.total_amount) * 100;
+  // THẺ RÚT GỌN HIỂN THỊ NGOÀI MÀN HÌNH CHÍNH (GROUP CARD)
+  function GroupCard({ group, onClick }: any) {
+    const isMoney = group.item_type === 'tien';
     const unit = isMoney ? 'đ' : 'kg';
 
     return (
-      <div className={`bg-white p-6 rounded-[30px] border shadow-sm flex flex-col gap-4 relative overflow-hidden transition-colors ${isDone ? 'border-green-200 bg-green-50/30' : 'hover:border-gray-300'}`}>
-        
-        {isDone && <div className="absolute -right-10 top-5 bg-green-500 text-white font-black text-[10px] uppercase py-1 px-10 rotate-45 z-10 shadow-md">Đã thanh toán</div>}
-
-        <div className="flex justify-between items-start">
-           <div>
-              <div className="flex items-center gap-2">
-                 <h3 className="text-2xl font-black text-gray-900 tracking-tight">{d.target_name}</h3>
-                 {/* BỘ NÚT SỬA VÀ XÓA ẨN TRÊN TIÊU ĐỀ */}
-                 <div className="flex gap-1 ml-2">
-                    <button onClick={onEdit} className="p-2 bg-gray-100 hover:bg-blue-100 text-gray-500 hover:text-blue-600 rounded-full transition-colors" title="Sửa sổ nợ"><Pencil size={14}/></button>
-                    <button onClick={onDelete} className="p-2 bg-gray-100 hover:bg-red-100 text-gray-500 hover:text-red-600 rounded-full transition-colors" title="Xóa sổ nợ"><Trash2 size={14}/></button>
-                 </div>
-              </div>
-              <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-md mt-1 inline-block ${isMoney ? 'bg-yellow-100 text-yellow-700' : 'bg-orange-100 text-orange-700'}`}>
-                 Mượn {isMoney ? 'Tiền' : 'Yến sào'}
-              </span>
-           </div>
-           <div className="text-right">
-              <p className="text-[10px] font-black text-gray-400 uppercase">Tổng mượn gốc</p>
-              <p className="text-lg font-black text-gray-900">{Number(d.total_amount).toLocaleString('vi-VN')}{unit}</p>
-           </div>
-        </div>
-
-        <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-           <div className="flex justify-between items-end mb-2">
-             <span className="text-[10px] font-black uppercase text-gray-500">Còn lại nợ gốc:</span>
-             <span className={`text-2xl font-black ${isDone ? 'text-green-500' : 'text-red-500'}`}>{Number(d.remaining_amount).toLocaleString('vi-VN')}{unit}</span>
-           </div>
-           <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden"><div className="bg-emerald-500 h-full transition-all" style={{ width: `${progress}%` }}></div></div>
-        </div>
-
-        {/* HIỂN THỊ CHI TIẾT NGÀY & TIỀN LÃI */}
-        {!isDone && d.interest_day && isMoney && (
-           <div className="flex flex-col gap-1 bg-orange-50 text-orange-800 p-3 rounded-xl border border-orange-100 text-xs font-bold">
-              <div className="flex items-center gap-2">
-                 <CalendarClock size={16}/> Lịch đóng lãi tiếp theo: <span className="font-black underline">{getNextInterestDate(d.interest_day)}</span>
-              </div>
-              {d.interest_amount > 0 && (
-                 <div className="ml-6 text-[10px] uppercase font-black text-orange-600 tracking-widest">
-                    Mỗi tháng: {Number(d.interest_amount).toLocaleString('vi-VN')} VNĐ
-                 </div>
-              )}
-           </div>
-        )}
-
-        <div className="flex gap-2 mt-2">
-           {!isDone && (
-             <button onClick={onPay} className="flex-1 bg-gray-900 hover:bg-black text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-colors shadow-md">Ghi chép</button>
-           )}
-           <button onClick={onHistory} className="flex-none bg-white border-2 border-gray-100 hover:bg-gray-50 text-gray-600 p-3 rounded-xl transition-colors title='Xem lịch sử đóng lãi/trả gốc'"><History size={18}/></button>
-        </div>
+      <div onClick={onClick} className="bg-white p-4 md:p-5 rounded-[24px] border border-gray-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all cursor-pointer flex items-center justify-between group/card active:scale-[0.98]">
+         <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center shrink-0 ${group.debt_type === 'vay_vao' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>
+               <Wallet size={20}/>
+            </div>
+            <div>
+               <h3 className="text-sm md:text-base font-black text-gray-900 capitalize leading-tight truncate max-w-[120px] md:max-w-[200px]">{group.displayName}</h3>
+               <div className="flex items-center gap-1.5 mt-1">
+                  <span className={`text-[8px] md:text-[9px] font-black px-1.5 py-0.5 rounded uppercase border ${isMoney ? 'bg-yellow-50 text-yellow-700 border-yellow-100' : 'bg-orange-50 text-orange-700 border-orange-100'}`}>
+                     Mượn {isMoney ? 'Tiền' : 'Yến'}
+                  </span>
+                  <span className="text-[9px] text-gray-400 font-bold bg-gray-50 px-1.5 py-0.5 rounded">{group.items.length} món nợ</span>
+               </div>
+            </div>
+         </div>
+         <div className="text-right flex items-center gap-2 md:gap-3">
+            <div className="flex flex-col items-end">
+               <p className="text-[8px] md:text-[9px] font-bold text-gray-400 uppercase mb-0.5 tracking-widest">Tổng đang nợ</p>
+               <p className={`text-base md:text-xl font-black tracking-tighter ${group.debt_type === 'vay_vao' ? 'text-red-600' : 'text-blue-600'}`}>
+                  {group.totalRemaining.toLocaleString('vi-VN')}<span className="text-xs ml-0.5">{unit}</span>
+               </p>
+            </div>
+            <ArrowRightCircle className="text-gray-200 group-hover/card:text-blue-500 transition-colors shrink-0" size={20}/>
+         </div>
       </div>
     )
   }
-}   
+}
