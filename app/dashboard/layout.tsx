@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { 
   LayoutDashboard, ShoppingCart, Users, LineChart, LogOut, 
-  Package, Map, Landmark, ShieldCheck, Calculator, // Thêm Calculator cho Sổ Gia Công
+  Package, Map, Landmark, ShieldCheck, Calculator, Factory,
   Menu, X 
 } from 'lucide-react'
 
@@ -50,11 +50,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/login')
   }
 
-  // ĐÃ BỔ SUNG SỔ GIA CÔNG VÀO DANH SÁCH MENU
   const menuItems = [
     { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Kho & Lô Hàng', href: '/dashboard/inventory', icon: Package },
-    { name: 'Sổ Gia Công', href: '/dashboard/production', icon: Calculator }, // Nằm ngay dưới Kho cho thuận tay
+    { name: 'Sổ Trạm Yến', href: '/dashboard/suppliers', icon: Factory }, // ĐÃ BỔ SUNG SỔ TRẠM YẾN
+    { name: 'Sổ Gia Công', href: '/dashboard/production', icon: Calculator }, 
     { name: 'Bản đồ khách', href: '/dashboard/map', icon: Map },
     { name: 'Đơn hàng', href: '/dashboard/orders', icon: ShoppingCart },
     { name: 'Khách hàng', href: '/dashboard/customers', icon: Users },

@@ -47,7 +47,6 @@ export default function InventoryPage() {
   const average_price = total_kg_input > 0 ? (total_cost_input / total_kg_input) : 0;
 
   const fetchBatches = async () => {
-    // ĐÃ SỬA: Bắt buộc sắp xếp theo Ngày Nhập Lô (purchase_date) từ mới đến cũ
     const { data } = await supabase
       .from('batches')
       .select('*, orders(*, customers(name, phone))')
@@ -375,7 +374,7 @@ export default function InventoryPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <p className="text-gray-500 font-medium text-xs">Ngày nhập: <span className="text-gray-900 font-semibold">{new Date(b.purchase_date).toLocaleDateString('vi-VN')}</span></p>
+                        <p className="text-gray-500 font-medium text-xs">Ngày nhập: <span className="text-gray-900 font-semibold">{new Date(b.purchase_date || b.created_at).toLocaleDateString('vi-VN')}</span></p>
                         <span className="text-gray-300">|</span>
                         <p className="text-gray-500 font-medium text-xs">Nguồn: <span className="text-blue-600 font-semibold">{b.supplier_name || 'N/A'}</span></p>
                         {b.has_receipt ? <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded text-[10px] font-bold border border-emerald-100 flex items-center gap-1"><CheckCircle2 size={10}/> Thuế</span> : null}
@@ -386,19 +385,19 @@ export default function InventoryPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full lg:w-2/3">
                    <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl flex flex-col justify-center">
                       <p className="text-[10px] font-bold uppercase text-blue-500 mb-1">Tồn kho hiện tại</p>
-                      <p className="text-xl font-black text-blue-900 truncate">{b.remainingWeight.toFixed(3)} kg</p>
+                      <p className="text-base lg:text-lg font-black text-blue-900">{b.remainingWeight.toFixed(3)} kg</p>
                    </div>
                    <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl flex flex-col justify-center">
                       <p className="text-[10px] font-bold uppercase text-gray-500 mb-1">Tổng vốn bỏ ra</p>
-                      <p className="text-xl font-black text-gray-800 truncate" title={`${b.totalPurchaseCost}đ`}>{formatNum(b.totalPurchaseCost)}</p>
+                      <p className="text-base lg:text-lg font-black text-gray-800" title={`${b.totalPurchaseCost}đ`}>{formatNum(b.totalPurchaseCost)}</p>
                    </div>
                    <div className="bg-white border border-gray-200 shadow-sm p-4 rounded-xl cursor-pointer hover:border-blue-300 transition-colors flex flex-col justify-center" onClick={() => setModalData({ batch: b, type: 'sold' })}>
                       <p className="text-[10px] font-bold uppercase text-gray-500 mb-1">Đã xuất bán</p>
-                      <p className="text-xl font-black text-gray-800 truncate">{b.totalSoldWeight.toFixed(3)} kg</p>
+                      <p className="text-base lg:text-lg font-black text-gray-800">{b.totalSoldWeight.toFixed(3)} kg</p>
                    </div>
                    <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl cursor-pointer hover:border-emerald-300 transition-colors flex flex-col justify-center" onClick={() => setModalData({ batch: b, type: 'profit' })}>
                       <p className="text-[10px] font-bold uppercase text-emerald-600 mb-1">Lãi thực nhận</p>
-                      <p className="text-xl font-black text-emerald-700 truncate" title={`+${b.totalProfit}đ`}>+{formatNum(b.totalProfit)}</p>
+                      <p className="text-base lg:text-lg font-black text-emerald-700" title={`+${b.totalProfit}đ`}>+{formatNum(b.totalProfit)}</p>
                    </div>
                 </div>
               </div>
@@ -415,28 +414,28 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-gray-200 p-5 mt-2">
-                 <h4 className="text-[11px] font-bold uppercase text-gray-800 mb-4 flex items-center gap-2"><ListFilter size={14} className="text-gray-400"/> Tồn kho & Giá Vốn độc lập từng phân loại</h4>
-                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-2xl border border-gray-200 p-4 mt-2">
+                 <h4 className="text-[11px] font-bold uppercase text-gray-800 mb-4 flex items-center gap-2"><ListFilter size={14} className="text-gray-400"/> Tồn kho & Giá Vốn chi tiết</h4>
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100 flex flex-col justify-between items-center text-center">
                        <p className="text-[10px] font-bold text-gray-500 uppercase">Xô (Nhập {Number(b.weight_xo || 0).toFixed(2)})</p>
-                       <p className={`text-lg font-black mt-1 ${Number(b.weight_xo || 0) - b.sold_xo < 0 ? 'text-red-500' : 'text-gray-800'}`}>{(Number(b.weight_xo || 0) - b.sold_xo).toFixed(3)} kg</p>
-                       <p className="text-[10px] text-gray-400 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full truncate">Vốn: {formatNum(Number(b.cost_xo || b.cost_per_kg || 0))}</p>
+                       <p className={`text-base font-black my-1 ${Number(b.weight_xo || 0) - b.sold_xo < 0 ? 'text-red-500' : 'text-gray-800'}`}>{(Number(b.weight_xo || 0) - b.sold_xo).toFixed(3)} kg</p>
+                       <p className="text-[10px] text-gray-500 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full text-center">Vốn: {formatNum(Number(b.cost_xo || b.cost_per_kg || 0))}</p>
                     </div>
                     <div className="bg-green-50/30 p-3 rounded-xl border border-green-100 flex flex-col justify-between items-center text-center">
                        <p className="text-[10px] font-bold text-green-600 uppercase">Đẹp (Nhập {Number(b.weight_dep || 0).toFixed(2)})</p>
-                       <p className={`text-lg font-black mt-1 ${Number(b.weight_dep || 0) - b.sold_dep < 0 ? 'text-red-500' : 'text-green-700'}`}>{(Number(b.weight_dep || 0) - b.sold_dep).toFixed(3)} kg</p>
-                       <p className="text-[10px] text-gray-400 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full truncate">Vốn: {formatNum(Number(b.cost_dep || b.cost_per_kg || 0))}</p>
+                       <p className={`text-base font-black my-1 ${Number(b.weight_dep || 0) - b.sold_dep < 0 ? 'text-red-500' : 'text-green-700'}`}>{(Number(b.weight_dep || 0) - b.sold_dep).toFixed(3)} kg</p>
+                       <p className="text-[10px] text-gray-500 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full text-center">Vốn: {formatNum(Number(b.cost_dep || b.cost_per_kg || 0))}</p>
                     </div>
                     <div className="bg-orange-50/30 p-3 rounded-xl border border-orange-100 flex flex-col justify-between items-center text-center">
                        <p className="text-[10px] font-bold text-orange-500 uppercase">Vừa (Nhập {Number(b.weight_vua || 0).toFixed(2)})</p>
-                       <p className={`text-lg font-black mt-1 ${Number(b.weight_vua || 0) - b.sold_vua < 0 ? 'text-red-500' : 'text-orange-700'}`}>{(Number(b.weight_vua || 0) - b.sold_vua).toFixed(3)} kg</p>
-                       <p className="text-[10px] text-gray-400 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full truncate">Vốn: {formatNum(Number(b.cost_vua || b.cost_per_kg || 0))}</p>
+                       <p className={`text-base font-black my-1 ${Number(b.weight_vua || 0) - b.sold_vua < 0 ? 'text-red-500' : 'text-orange-700'}`}>{(Number(b.weight_vua || 0) - b.sold_vua).toFixed(3)} kg</p>
+                       <p className="text-[10px] text-gray-500 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full text-center">Vốn: {formatNum(Number(b.cost_vua || b.cost_per_kg || 0))}</p>
                     </div>
                     <div className="bg-red-50/30 p-3 rounded-xl border border-red-100 flex flex-col justify-between items-center text-center">
                        <p className="text-[10px] font-bold text-red-500 uppercase">Xấu (Nhập {Number(b.weight_xau || 0).toFixed(2)})</p>
-                       <p className={`text-lg font-black mt-1 ${Number(b.weight_xau || 0) - b.sold_xau < 0 ? 'text-red-500' : 'text-red-700'}`}>{(Number(b.weight_xau || 0) - b.sold_xau).toFixed(3)} kg</p>
-                       <p className="text-[10px] text-gray-400 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full truncate">Vốn: {formatNum(Number(b.cost_xau || b.cost_per_kg || 0))}</p>
+                       <p className={`text-base font-black my-1 ${Number(b.weight_xau || 0) - b.sold_xau < 0 ? 'text-red-500' : 'text-red-700'}`}>{(Number(b.weight_xau || 0) - b.sold_xau).toFixed(3)} kg</p>
+                       <p className="text-[10px] text-gray-500 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full text-center">Vốn: {formatNum(Number(b.cost_xau || b.cost_per_kg || 0))}</p>
                     </div>
                  </div>
                  
