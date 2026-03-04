@@ -37,10 +37,10 @@ export default function InventoryPage() {
   const [transferModal, setTransferModal] = useState<{batch: any, gradeKey: string, gradeName: string, gradeValue: string, remain: number} | null>(null)
   const [transferForm, setTransferForm] = useState({ targetBatchId: '', kg: '' })
 
-  const w_xo = Number(form.weight_xo || 0); const c_xo = Number(form.cost_xo || 0);
-  const w_dep = Number(form.weight_dep || 0); const c_dep = Number(form.cost_dep || 0);
-  const w_vua = Number(form.weight_vua || 0); const c_vua = Number(form.cost_vua || 0);
-  const w_xau = Number(form.weight_xau || 0); const c_xau = Number(form.cost_xau || 0);
+  const w_xo = Number(form.weight_xo?.replace(',', '.') || 0); const c_xo = Number(form.cost_xo || 0);
+  const w_dep = Number(form.weight_dep?.replace(',', '.') || 0); const c_dep = Number(form.cost_dep || 0);
+  const w_vua = Number(form.weight_vua?.replace(',', '.') || 0); const c_vua = Number(form.cost_vua || 0);
+  const w_xau = Number(form.weight_xau?.replace(',', '.') || 0); const c_xau = Number(form.cost_xau || 0);
 
   const total_kg_input = w_xo + w_dep + w_vua + w_xau;
   const total_cost_input = (w_xo * c_xo) + (w_dep * c_dep) + (w_vua * c_vua) + (w_xau * c_xau);
@@ -155,17 +155,22 @@ export default function InventoryPage() {
   const handleUpdateBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const total_kg = Number(editBatchForm.weight_xo || 0) + Number(editBatchForm.weight_dep || 0) + Number(editBatchForm.weight_vua || 0) + Number(editBatchForm.weight_xau || 0);
+    
+    const wx = Number(editBatchForm.weight_xo?.toString().replace(',', '.') || 0);
+    const wd = Number(editBatchForm.weight_dep?.toString().replace(',', '.') || 0);
+    const wv = Number(editBatchForm.weight_vua?.toString().replace(',', '.') || 0);
+    const wxau = Number(editBatchForm.weight_xau?.toString().replace(',', '.') || 0);
+    const total_kg = wx + wd + wv + wxau;
 
     await supabase.from('batches').update({ 
       batch_code: editBatchForm.batch_code.toUpperCase(),
       supplier_name: editBatchForm.supplier_name, 
       has_receipt: editBatchForm.has_receipt,
       purchase_date: editBatchForm.purchase_date,
-      weight_xo: Number(editBatchForm.weight_xo || 0), cost_xo: Number(editBatchForm.cost_xo || 0),
-      weight_dep: Number(editBatchForm.weight_dep || 0), cost_dep: Number(editBatchForm.cost_dep || 0),
-      weight_vua: Number(editBatchForm.weight_vua || 0), cost_vua: Number(editBatchForm.cost_vua || 0),
-      weight_xau: Number(editBatchForm.weight_xau || 0), cost_xau: Number(editBatchForm.cost_xau || 0),
+      weight_xo: wx, cost_xo: Number(editBatchForm.cost_xo || 0),
+      weight_dep: wd, cost_dep: Number(editBatchForm.cost_dep || 0),
+      weight_vua: wv, cost_vua: Number(editBatchForm.cost_vua || 0),
+      weight_xau: wxau, cost_xau: Number(editBatchForm.cost_xau || 0),
       total_weight: total_kg
     }).eq('id', editingBatch.id);
     
@@ -189,58 +194,6 @@ export default function InventoryPage() {
     }
   }
 
-  const handleTransferStock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    const kgToMove = Number(transferForm.kg);
-    
-    if (kgToMove <= 0 || kgToMove > transferModal!.remain) {
-        alert("Số kg chuyển phải lớn hơn 0 và không vượt quá số tồn kho hiện tại!");
-        setLoading(false); return;
-    }
-    if (!transferForm.targetBatchId) {
-        alert("Sếp chưa chọn Lô muốn gộp vào kìa!");
-        setLoading(false); return;
-    }
-
-    const fromBatch = batches.find(b => b.id === transferModal!.batch.id);
-    const toBatch = batches.find(b => b.id === transferForm.targetBatchId);
-    const gKey = transferModal!.gradeKey;
-    const gVal = transferModal!.gradeValue;
-
-    try {
-        let { data: sysCust } = await supabase.from('customers').select('id').eq('phone', '0000000000').maybeSingle();
-        let sysCustId = sysCust?.id;
-        if (!sysCustId) {
-            const { data: newCust } = await supabase.from('customers').insert([{ name: 'HỆ THỐNG (CHUYỂN KHO)', phone: '0000000000', address: 'Kho Nội Bộ DD PRIME' }]).select().single();
-            sysCustId = newCust?.id;
-        }
-
-        await supabase.from('orders').insert([{
-            customer_id: sysCustId,
-            batch_id: fromBatch.id,
-            grade_type: gVal,
-            weight: kgToMove,
-            cost: 0, revenue: 0, profit: 0, tax_amount: 0, shipping_fee: 0,
-            status: 'Hoàn tất',
-            note: `Gộp sang lô ${toBatch.batch_code}`,
-            created_at: new Date().toISOString()
-        }]);
-
-        await supabase.from('batches').update({
-            [gKey]: Number(toBatch[gKey] || 0) + kgToMove,
-            total_weight: Number(toBatch.total_weight || 0) + kgToMove
-        }).eq('id', toBatch.id);
-
-        setTransferModal(null);
-        setTransferForm({ targetBatchId: '', kg: '' });
-        fetchBatches();
-    } catch (error) {
-        alert("Có lỗi xảy ra khi chuyển kho!");
-        setLoading(false);
-    }
-  }
-
   const formatNum = (num: number) => {
     if (num >= 1000000000) return (num / 1000000000).toFixed(2) + ' Tỷ'
     if (num >= 1000000) return (num / 1000000).toFixed(1) + ' Tr'
@@ -248,276 +201,284 @@ export default function InventoryPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 space-y-8 bg-gray-50 min-h-screen animate-in fade-in max-w-6xl mx-auto pb-24">
+    <div className="p-3 md:p-8 space-y-6 md:space-y-8 bg-gray-50 min-h-screen animate-in fade-in max-w-7xl mx-auto pb-24">
       
-      {/* HEADER TỐI GIẢN */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 md:p-8 rounded-[30px] shadow-sm border border-gray-200 gap-5">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-5 md:p-8 rounded-[24px] md:rounded-[30px] shadow-sm border border-gray-200 gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-3">
-             <Package size={28} className="text-blue-500"/> Quản Lý Kho Yến
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900 flex items-center gap-2 md:gap-3">
+             <Package size={24} className="text-blue-500"/> Quản Lý Kho Yến
           </h1>
-          <p className="text-gray-500 text-sm mt-1">Kiểm soát nhập liệu, tồn kho và hao hụt chi tiết từng loại.</p>
+          <p className="text-gray-500 text-[11px] md:text-sm mt-1">Kiểm soát nhập liệu, tồn kho và hao hụt chi tiết.</p>
         </div>
-        <button onClick={() => setShowAddForm(!showAddForm)} className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold shadow-md transition-all flex items-center justify-center gap-2 text-sm">
+        <button onClick={() => setShowAddForm(!showAddForm)} className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-semibold shadow-md transition-all flex items-center justify-center gap-2 text-sm">
           {showAddForm ? 'Đóng form nhập' : 'Nhập lô mới'}
         </button>
       </div>
 
-      {/* FORM NHẬP LÔ MỚI */}
       {showAddForm && (
-        <form onSubmit={handleAddBatch} className="bg-white p-6 md:p-8 rounded-[24px] border border-gray-200 shadow-sm space-y-6">
+        <form onSubmit={handleAddBatch} className="bg-white p-5 md:p-8 rounded-[24px] border border-gray-200 shadow-sm space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
                <label className="text-xs font-semibold text-gray-600 ml-1">Ngày Nhập</label>
                <input required type="date" className="w-full border border-gray-300 rounded-xl p-3 text-sm font-semibold outline-none focus:border-blue-500 transition-all" value={form.purchase_date} onChange={e => setForm({...form, purchase_date: e.target.value})} />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
                <label className="text-xs font-semibold text-gray-600 ml-1">Mã Lô Hàng</label>
-               <input required placeholder="Ví dụ: LO-01" className="w-full border border-gray-300 rounded-xl p-3 text-sm font-bold uppercase outline-none focus:border-blue-500 transition-all placeholder:text-gray-400 placeholder:font-normal" value={form.batch_code} onChange={e => setForm({...form, batch_code: e.target.value})} />
+               <input required placeholder="Ví dụ: LO-01" className="w-full border border-gray-300 rounded-xl p-3 text-sm font-bold uppercase outline-none focus:border-blue-500 transition-all" value={form.batch_code} onChange={e => setForm({...form, batch_code: e.target.value})} />
             </div>
           </div>
           
-          <div className="bg-gray-50 p-5 md:p-6 rounded-2xl border border-gray-200">
-             <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2"><ListFilter size={16} className="text-blue-500"/> Khai báo Số Lượng & Giá Vốn Riêng</h3>
-             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-2">
-                   <label className="text-xs font-bold uppercase text-gray-600 block text-center">Hàng Xô Zin</label>
-                   <input type="number" step="0.001" placeholder="Nhập Kg..." className="w-full border-b border-gray-200 p-2 text-sm font-semibold outline-none text-center focus:border-blue-400 transition-colors" value={form.weight_xo} onChange={e => setForm({...form, weight_xo: e.target.value})} />
-                   <input type="number" placeholder="Giá vốn / 1kg" className="w-full bg-gray-50 rounded-lg p-2 text-sm font-semibold outline-none text-center focus:ring-2 focus:ring-blue-100 transition-all" value={form.cost_xo} onChange={e => setForm({...form, cost_xo: e.target.value})} />
+          <div className="bg-gray-50 p-4 md:p-6 rounded-2xl border border-gray-200">
+             <h3 className="text-xs font-bold text-gray-800 mb-3 flex items-center gap-1.5"><ListFilter size={14} className="text-blue-500"/> Khai báo Số Lượng & Giá Vốn Riêng</h3>
+             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-1.5">
+                   <label className="text-[10px] font-bold uppercase text-gray-600 block text-center">Xô Zin</label>
+                   <input type="text" placeholder="Kg..." className="w-full border-b border-gray-200 pb-1 text-sm font-semibold outline-none text-center focus:border-blue-400" value={form.weight_xo} onChange={e => setForm({...form, weight_xo: e.target.value})} />
+                   <input type="number" placeholder="Giá/1kg" className="w-full bg-gray-50 rounded p-1.5 text-xs font-semibold outline-none text-center focus:ring-1 focus:ring-blue-100" value={form.cost_xo} onChange={e => setForm({...form, cost_xo: e.target.value})} />
                 </div>
-                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-2">
-                   <label className="text-xs font-bold uppercase text-green-600 block text-center">Hàng Đẹp</label>
-                   <input type="number" step="0.001" placeholder="Nhập Kg..." className="w-full border-b border-gray-200 p-2 text-sm font-semibold outline-none text-center focus:border-green-400 transition-colors" value={form.weight_dep} onChange={e => setForm({...form, weight_dep: e.target.value})} />
-                   <input type="number" placeholder="Giá vốn / 1kg" className="w-full bg-gray-50 rounded-lg p-2 text-sm font-semibold outline-none text-center focus:ring-2 focus:ring-green-100 transition-all" value={form.cost_dep} onChange={e => setForm({...form, cost_dep: e.target.value})} />
+                <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-1.5">
+                   <label className="text-[10px] font-bold uppercase text-green-600 block text-center">Hàng Đẹp</label>
+                   <input type="text" placeholder="Kg..." className="w-full border-b border-gray-200 pb-1 text-sm font-semibold outline-none text-center focus:border-green-400" value={form.weight_dep} onChange={e => setForm({...form, weight_dep: e.target.value})} />
+                   <input type="number" placeholder="Giá/1kg" className="w-full bg-gray-50 rounded p-1.5 text-xs font-semibold outline-none text-center focus:ring-1 focus:ring-green-100" value={form.cost_dep} onChange={e => setForm({...form, cost_dep: e.target.value})} />
                 </div>
-                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-2">
-                   <label className="text-xs font-bold uppercase text-orange-500 block text-center">Hàng Vừa</label>
-                   <input type="number" step="0.001" placeholder="Nhập Kg..." className="w-full border-b border-gray-200 p-2 text-sm font-semibold outline-none text-center focus:border-orange-400 transition-colors" value={form.weight_vua} onChange={e => setForm({...form, weight_vua: e.target.value})} />
-                   <input type="number" placeholder="Giá vốn / 1kg" className="w-full bg-gray-50 rounded-lg p-2 text-sm font-semibold outline-none text-center focus:ring-2 focus:ring-orange-100 transition-all" value={form.cost_vua} onChange={e => setForm({...form, cost_vua: e.target.value})} />
+                <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-1.5">
+                   <label className="text-[10px] font-bold uppercase text-orange-500 block text-center">Hàng Vừa</label>
+                   <input type="text" placeholder="Kg..." className="w-full border-b border-gray-200 pb-1 text-sm font-semibold outline-none text-center focus:border-orange-400" value={form.weight_vua} onChange={e => setForm({...form, weight_vua: e.target.value})} />
+                   <input type="number" placeholder="Giá/1kg" className="w-full bg-gray-50 rounded p-1.5 text-xs font-semibold outline-none text-center focus:ring-1 focus:ring-orange-100" value={form.cost_vua} onChange={e => setForm({...form, cost_vua: e.target.value})} />
                 </div>
-                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-2">
-                   <label className="text-xs font-bold uppercase text-red-500 block text-center">Hàng Xấu</label>
-                   <input type="number" step="0.001" placeholder="Nhập Kg..." className="w-full border-b border-gray-200 p-2 text-sm font-semibold outline-none text-center focus:border-red-400 transition-colors" value={form.weight_xau} onChange={e => setForm({...form, weight_xau: e.target.value})} />
-                   <input type="number" placeholder="Giá vốn / 1kg" className="w-full bg-gray-50 rounded-lg p-2 text-sm font-semibold outline-none text-center focus:ring-2 focus:ring-red-100 transition-all" value={form.cost_xau} onChange={e => setForm({...form, cost_xau: e.target.value})} />
+                <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-1.5">
+                   <label className="text-[10px] font-bold uppercase text-red-500 block text-center">Hàng Xấu</label>
+                   <input type="text" placeholder="Kg..." className="w-full border-b border-gray-200 pb-1 text-sm font-semibold outline-none text-center focus:border-red-400" value={form.weight_xau} onChange={e => setForm({...form, weight_xau: e.target.value})} />
+                   <input type="number" placeholder="Giá/1kg" className="w-full bg-gray-50 rounded p-1.5 text-xs font-semibold outline-none text-center focus:ring-1 focus:ring-red-100" value={form.cost_xau} onChange={e => setForm({...form, cost_xau: e.target.value})} />
                 </div>
              </div>
              
-             <div className="mt-5 flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-xl border border-gray-200 gap-4 shadow-sm">
-                <div className="text-gray-500 text-sm font-medium">Hệ thống tự động nhẩm:</div>
-                <div className="flex flex-row items-center gap-6 w-full sm:w-auto justify-between sm:justify-end">
-                  <div className="text-right">
-                    <span className="text-[10px] uppercase font-bold text-gray-400 block mb-0.5">Tổng khối lượng</span>
-                    <span className="text-lg font-black text-gray-900">{total_kg_input.toFixed(3)} Kg</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] uppercase font-bold text-gray-400 block mb-0.5">Giá trung bình</span>
-                    <span className="text-lg font-black text-blue-600">{Math.round(average_price).toLocaleString()} đ/kg</span>
-                  </div>
+             <div className="mt-4 flex flex-row justify-between items-center bg-white p-3 rounded-xl border border-gray-200 gap-3 shadow-sm">
+                <div className="text-right w-1/2 border-r pr-3">
+                  <span className="text-[9px] uppercase font-bold text-gray-400 block">Tổng khối lượng</span>
+                  <span className="text-base font-black text-gray-900">{total_kg_input.toFixed(3)} Kg</span>
+                </div>
+                <div className="text-left w-1/2 pl-3">
+                  <span className="text-[9px] uppercase font-bold text-gray-400 block">Giá trung bình</span>
+                  <span className="text-base font-black text-blue-600">{Math.round(average_price).toLocaleString()} đ/kg</span>
                 </div>
              </div>
           </div>
 
-          <div className="flex flex-col md:flex-row items-center gap-4 bg-gray-50 p-5 rounded-2xl border border-dashed border-gray-300">
+          <div className="flex flex-col md:flex-row items-center gap-3 bg-gray-50 p-4 rounded-xl border border-dashed border-gray-300">
              <div className="flex-1 w-full">
-                <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Tải ảnh lô hàng (Tùy chọn)</label>
+                <label className="text-[10px] font-semibold text-gray-600 mb-1 block">Tải ảnh lô hàng (Tùy chọn)</label>
                 <div className="relative">
                     <input type="file" accept="image/*" onChange={handleImageSelect} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                    <div className="bg-white border border-gray-300 rounded-xl p-3 flex items-center justify-center gap-2 font-medium text-gray-600 hover:bg-gray-100 transition-colors text-sm">
-                        <Upload size={18}/> <span className="truncate">{imageFile ? imageFile.name : 'Nhấn để chụp hoặc chọn ảnh...'}</span>
+                    <div className="bg-white border border-gray-300 rounded-lg p-2.5 flex items-center justify-center gap-2 font-medium text-gray-600 text-xs">
+                        <Upload size={14}/> <span className="truncate">{imageFile ? imageFile.name : 'Chụp hoặc chọn ảnh...'}</span>
                     </div>
                 </div>
              </div>
              {imagePreview && (
-                 <div className="w-16 h-16 rounded-xl border border-gray-200 overflow-hidden shadow-sm shrink-0 bg-white">
+                 <div className="w-12 h-12 rounded-lg border border-gray-200 overflow-hidden shadow-sm shrink-0 bg-white">
                      <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
                  </div>
              )}
           </div>
 
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <input required placeholder="Nguồn nhập (Tên người bán)" className="w-full md:w-1/3 border border-gray-300 rounded-xl p-3 font-medium text-sm outline-none focus:border-blue-500 transition-colors" value={form.supplier_name} onChange={e => setForm({...form, supplier_name: e.target.value})} />
+          <div className="flex flex-col md:flex-row justify-between gap-3">
+            <input required placeholder="Nguồn nhập (Tên người bán)" className="w-full border border-gray-300 rounded-xl p-3 font-medium text-sm outline-none focus:border-blue-500" value={form.supplier_name} onChange={e => setForm({...form, supplier_name: e.target.value})} />
             
-            <label className="flex items-center gap-2 border border-gray-200 rounded-xl p-3 cursor-pointer hover:bg-gray-50 w-full md:w-auto justify-center transition-colors">
+            <label className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl p-3 cursor-pointer bg-gray-50 w-full">
               <input type="checkbox" className="w-4 h-4 accent-blue-600 rounded" checked={form.has_receipt} onChange={e => setForm({...form, has_receipt: e.target.checked})} />
-              <span className="text-sm font-semibold text-gray-700">Đã khai báo Thuế</span>
+              <span className="text-xs font-semibold text-gray-700">Đã khai báo Thuế</span>
             </label>
             
-            <button type="submit" className="w-full md:w-auto bg-gray-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-black shadow-md transition-colors">Lưu Kho Ngay</button>
+            <button type="submit" className="w-full bg-gray-900 text-white px-6 py-3 rounded-xl font-bold shadow-md">Lưu Kho</button>
           </div>
         </form>
       )}
 
-      {loading && batches.length === 0 ? <div className="p-10 text-center font-medium text-gray-400 animate-pulse tracking-widest text-sm">ĐANG TẢI DỮ LIỆU KHO...</div> : (
+      {loading && batches.length === 0 ? <div className="p-10 text-center font-medium text-gray-400 animate-pulse text-sm">ĐANG TẢI DỮ LIỆU KHO...</div> : (
         <div className="grid grid-cols-1 gap-6">
-          {batches.map((b) => (
-            <div key={b.id} className="bg-white p-6 md:p-8 rounded-[24px] border border-gray-200 shadow-sm flex flex-col gap-6 relative group hover:shadow-md transition-shadow">
-              
-              <div className="flex flex-col lg:flex-row justify-between items-start gap-6 w-full">
-                <div className="flex flex-row gap-4 items-center w-full lg:w-1/3 border-b border-gray-100 lg:border-none pb-5 lg:pb-0">
-                  <div className="w-20 h-20 md:w-24 md:h-24 bg-gray-50 rounded-2xl flex items-center justify-center border border-gray-200 shrink-0 overflow-hidden shadow-sm">
-                    {b.image_url ? <img src={b.image_url} alt="Lô hàng" className="w-full h-full object-cover hover:scale-110 transition-transform duration-500" /> : <ImageIcon className="text-gray-300"/>}
-                  </div>
+          {batches.map((b) => {
+             // GIỮ NGUYÊN CODE TÍNH TOÁN BÊN TRONG MAP
+             const diff_xo = Math.round((Number(b.weight_xo || 0) - b.sold_xo) * 1000) / 1000;
+             const diff_dep = Math.round((Number(b.weight_dep || 0) - b.sold_dep) * 1000) / 1000;
+             const diff_vua = Math.round((Number(b.weight_vua || 0) - b.sold_vua) * 1000) / 1000;
+             const diff_xau = Math.round((Number(b.weight_xau || 0) - b.sold_xau) * 1000) / 1000;
+             
+             const hasNegative = diff_xo < 0 || diff_dep < 0 || diff_vua < 0 || diff_xau < 0;
+
+             return (
+              <div key={b.id} className="bg-white p-5 md:p-8 rounded-[24px] border border-gray-200 shadow-sm flex flex-col gap-5 relative group hover:shadow-md transition-shadow">
+                
+                {/* ĐÃ FIX Ở ĐÂY: lg:items-center và phân bổ lg:w-1/3 với lg:w-2/3 để khối dàn đều */}
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 w-full">
                   
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between lg:justify-start gap-2 md:gap-4 mb-1">
-                        <h3 className="text-2xl md:text-3xl font-black text-gray-900 uppercase truncate">{b.batch_code}</h3>
-                        <div className="flex gap-1 shrink-0 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
-                           <button onClick={() => openEditBatch(b)} className="p-2 bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-lg border border-gray-200 transition-all" title="Sửa Lô Hàng"><Pencil size={14} /></button>
-                           <button onClick={() => handleDeleteBatch(b.id)} className="p-2 bg-gray-50 hover:bg-red-50 text-gray-400 hover:text-red-600 rounded-lg border border-gray-200 transition-all" title="Xóa Lô Hàng"><Trash2 size={14} /></button>
-                        </div>
+                  {/* Cột trái: Tên Lô & Nguồn */}
+                  <div className="flex flex-row gap-4 items-center w-full lg:w-1/3 border-b border-gray-100 pb-4 lg:border-none lg:pb-0">
+                    <div className="w-20 h-20 md:w-24 md:h-24 bg-gray-50 rounded-2xl flex items-center justify-center border border-gray-200 shrink-0 overflow-hidden shadow-sm">
+                      {b.image_url ? <img src={b.image_url} alt="Lô hàng" className="w-full h-full object-cover hover:scale-110 transition-transform" /> : <ImageIcon className="text-gray-300" size={32}/>}
                     </div>
+                    
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-2xl md:text-3xl font-black text-gray-900 uppercase truncate">{b.batch_code}</h3>
+                          <div className="flex gap-1 shrink-0 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
+                             <button onClick={() => openEditBatch(b)} className="p-2 bg-gray-50 text-gray-400 hover:text-blue-600 rounded-lg border border-gray-200" title="Sửa Lô Hàng"><Pencil size={14} /></button>
+                             <button onClick={() => handleDeleteBatch(b.id)} className="p-2 bg-gray-50 text-gray-400 hover:text-red-600 rounded-lg border border-gray-200" title="Xóa Lô Hàng"><Trash2 size={14} /></button>
+                          </div>
+                      </div>
 
-                    <div className="flex items-center gap-2 mb-1.5">
-                       <span className="bg-blue-50 text-blue-700 font-bold text-[11px] px-2.5 py-1 rounded-md border border-blue-100">
-                          TB: {Math.round(b.currentAveragePrice).toLocaleString()} đ/kg
-                       </span>
-                    </div>
+                      <div className="flex items-center gap-1.5 mt-1">
+                         <span className="bg-blue-50 text-blue-700 font-bold text-[10px] px-2.5 py-0.5 rounded border border-blue-100">
+                            TB: {Math.round(b.currentAveragePrice).toLocaleString()} đ/kg
+                         </span>
+                      </div>
 
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <p className="text-gray-500 font-medium text-xs">Ngày nhập: <span className="text-gray-900 font-semibold">{new Date(b.purchase_date || b.created_at).toLocaleDateString('vi-VN')}</span></p>
-                        <span className="text-gray-300">|</span>
-                        <p className="text-gray-500 font-medium text-xs">Nguồn: <span className="text-blue-600 font-semibold">{b.supplier_name || 'N/A'}</span></p>
-                        {b.has_receipt ? <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded text-[10px] font-bold border border-emerald-100 flex items-center gap-1"><CheckCircle2 size={10}/> Thuế</span> : null}
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-gray-500 font-medium">
+                          <span>Nhập: <b className="text-gray-900">{new Date(b.purchase_date || b.created_at).toLocaleDateString('vi-VN')}</b></span>
+                          <span>•</span>
+                          <span>Nguồn: <b className="text-blue-600">{b.supplier_name || 'N/A'}</b></span>
+                          {b.has_receipt && <span className="bg-emerald-50 text-emerald-600 px-1.5 rounded border border-emerald-100 flex items-center gap-0.5 text-[10px]"><CheckCircle2 size={10}/> Thuế</span>}
+                      </div>
                     </div>
+                  </div>
+
+                  {/* Cột phải: 4 thông số (Chia 4 cột trên PC, chia 2 cột trên Điện thoại) */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 w-full lg:w-2/3">
+                     <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl flex flex-col justify-center">
+                        <p className="text-[10px] font-bold uppercase text-blue-500 mb-1">Tồn kho hiện tại</p>
+                        <p className="text-lg md:text-xl font-black text-blue-900 truncate">{b.remainingWeight.toFixed(3)} kg</p>
+                     </div>
+                     <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl flex flex-col justify-center">
+                        <p className="text-[10px] font-bold uppercase text-gray-500 mb-1">Tổng vốn bỏ ra</p>
+                        <p className="text-lg md:text-xl font-black text-gray-800 truncate" title={`${b.totalPurchaseCost}đ`}>{formatNum(b.totalPurchaseCost)}</p>
+                     </div>
+                     <div className="bg-white border border-gray-200 shadow-sm p-4 rounded-xl cursor-pointer hover:border-blue-300 transition-colors flex flex-col justify-center" onClick={() => setModalData({ batch: b, type: 'sold' })}>
+                        <p className="text-[10px] font-bold uppercase text-gray-500 mb-1">Đã xuất bán</p>
+                        <p className="text-lg md:text-xl font-black text-gray-800 truncate">{b.totalSoldWeight.toFixed(3)} kg</p>
+                     </div>
+                     <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl cursor-pointer hover:border-emerald-300 transition-colors flex flex-col justify-center" onClick={() => setModalData({ batch: b, type: 'profit' })}>
+                        <p className="text-[10px] font-bold uppercase text-emerald-600 mb-1">Lãi thực nhận</p>
+                        <p className="text-lg md:text-xl font-black text-emerald-700 truncate" title={`+${b.totalProfit}đ`}>+{formatNum(b.totalProfit)}</p>
+                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full lg:w-2/3">
-                   <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl flex flex-col justify-center">
-                      <p className="text-[10px] font-bold uppercase text-blue-500 mb-1">Tồn kho hiện tại</p>
-                      <p className="text-base lg:text-lg font-black text-blue-900">{b.remainingWeight.toFixed(3)} kg</p>
-                   </div>
-                   <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl flex flex-col justify-center">
-                      <p className="text-[10px] font-bold uppercase text-gray-500 mb-1">Tổng vốn bỏ ra</p>
-                      <p className="text-base lg:text-lg font-black text-gray-800" title={`${b.totalPurchaseCost}đ`}>{formatNum(b.totalPurchaseCost)}</p>
-                   </div>
-                   <div className="bg-white border border-gray-200 shadow-sm p-4 rounded-xl cursor-pointer hover:border-blue-300 transition-colors flex flex-col justify-center" onClick={() => setModalData({ batch: b, type: 'sold' })}>
-                      <p className="text-[10px] font-bold uppercase text-gray-500 mb-1">Đã xuất bán</p>
-                      <p className="text-base lg:text-lg font-black text-gray-800">{b.totalSoldWeight.toFixed(3)} kg</p>
-                   </div>
-                   <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl cursor-pointer hover:border-emerald-300 transition-colors flex flex-col justify-center" onClick={() => setModalData({ batch: b, type: 'profit' })}>
-                      <p className="text-[10px] font-bold uppercase text-emerald-600 mb-1">Lãi thực nhận</p>
-                      <p className="text-base lg:text-lg font-black text-emerald-700" title={`+${b.totalProfit}đ`}>+{formatNum(b.totalProfit)}</p>
-                   </div>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                  <div className="flex justify-between items-end mb-2 gap-1">
+                    <span className="text-[10px] font-bold uppercase text-gray-500">Tiến độ thu hồi vốn</span>
+                    <span className={`font-bold text-xs ${b.progress >= 100 ? 'text-emerald-600' : 'text-blue-600'}`}>
+                       {b.progress >= 100 ? 'Đã thu hồi đủ vốn' : `Cần thu thêm ${formatNum(b.breakevenGap)}`}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                    <div className={`h-full transition-all duration-1000 ${b.progress >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${b.progress}%` }}></div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mt-2">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-2 gap-1">
-                  <span className="text-[11px] font-bold uppercase text-gray-500">Tiến độ thu hồi vốn</span>
-                  <span className={`font-bold text-xs ${b.progress >= 100 ? 'text-emerald-600' : 'text-blue-600'}`}>
-                     {b.progress >= 100 ? 'Đã thu hồi đủ vốn' : `Cần thu thêm ${b.breakevenGap.toLocaleString()}đ để hòa vốn`}
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                  <div className={`h-full transition-all duration-1000 ${b.progress >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${b.progress}%` }}></div>
+                <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                   <h4 className="text-xs font-bold uppercase text-gray-800 mb-4 flex items-center gap-1.5"><ListFilter size={14} className="text-gray-400"/> Tồn kho & Vốn chi tiết 4 loại</h4>
+                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100 flex flex-col justify-between items-center text-center">
+                         <p className="text-[10px] font-bold text-gray-500 uppercase">Xô (Nhập {Number(b.weight_xo || 0).toFixed(3)})</p>
+                         <p className={`text-base font-black my-1.5 ${diff_xo < 0 ? 'text-red-500' : 'text-gray-800'}`}>{diff_xo.toFixed(3)} kg</p>
+                         <p className="text-[10px] text-gray-400 font-semibold bg-white px-2 py-0.5 rounded border w-full truncate">Vốn: {formatNum(Number(b.cost_xo || b.cost_per_kg || 0))}</p>
+                      </div>
+                      <div className="bg-green-50/30 p-3 rounded-xl border border-green-100 flex flex-col justify-between items-center text-center">
+                         <p className="text-[10px] font-bold text-green-600 uppercase">Đẹp (Nhập {Number(b.weight_dep || 0).toFixed(3)})</p>
+                         <p className={`text-base font-black my-1.5 ${diff_dep < 0 ? 'text-red-500' : 'text-green-700'}`}>{diff_dep.toFixed(3)} kg</p>
+                         <p className="text-[10px] text-gray-400 font-semibold bg-white px-2 py-0.5 rounded border w-full truncate">Vốn: {formatNum(Number(b.cost_dep || b.cost_per_kg || 0))}</p>
+                      </div>
+                      <div className="bg-orange-50/30 p-3 rounded-xl border border-orange-100 flex flex-col justify-between items-center text-center">
+                         <p className="text-[10px] font-bold text-orange-500 uppercase">Vừa (Nhập {Number(b.weight_vua || 0).toFixed(3)})</p>
+                         <p className={`text-base font-black my-1.5 ${diff_vua < 0 ? 'text-red-500' : 'text-orange-700'}`}>{diff_vua.toFixed(3)} kg</p>
+                         <p className="text-[10px] text-gray-400 font-semibold bg-white px-2 py-0.5 rounded border w-full truncate">Vốn: {formatNum(Number(b.cost_vua || b.cost_per_kg || 0))}</p>
+                      </div>
+                      <div className="bg-red-50/30 p-3 rounded-xl border border-red-100 flex flex-col justify-between items-center text-center">
+                         <p className="text-[10px] font-bold text-red-500 uppercase">Xấu (Nhập {Number(b.weight_xau || 0).toFixed(3)})</p>
+                         <p className={`text-base font-black my-1.5 ${diff_xau < 0 ? 'text-red-500' : 'text-red-700'}`}>{diff_xau.toFixed(3)} kg</p>
+                         <p className="text-[10px] text-gray-400 font-semibold bg-white px-2 py-0.5 rounded border w-full truncate">Vốn: {formatNum(Number(b.cost_xau || b.cost_per_kg || 0))}</p>
+                      </div>
+                   </div>
+                   
+                   {hasNegative && (
+                       <div className="bg-red-50 p-3 rounded-xl mt-4 flex items-start gap-2 border border-red-200">
+                           <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16}/>
+                           <p className="text-xs text-red-700 font-medium leading-tight">Có phân loại bị ÂM Kg! Hãy bấm Cây bút ở tên Lô để <b>Sửa lại gốc nhập</b> cho khớp số lượng đã bán.</p>
+                       </div>
+                   )}
                 </div>
               </div>
-
-              <div className="bg-white rounded-2xl border border-gray-200 p-4 mt-2">
-                 <h4 className="text-[11px] font-bold uppercase text-gray-800 mb-4 flex items-center gap-2"><ListFilter size={14} className="text-gray-400"/> Tồn kho & Giá Vốn chi tiết</h4>
-                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="bg-gray-50/50 p-3 rounded-xl border border-gray-100 flex flex-col justify-between items-center text-center">
-                       <p className="text-[10px] font-bold text-gray-500 uppercase">Xô (Nhập {Number(b.weight_xo || 0).toFixed(2)})</p>
-                       <p className={`text-base font-black my-1 ${Number(b.weight_xo || 0) - b.sold_xo < 0 ? 'text-red-500' : 'text-gray-800'}`}>{(Number(b.weight_xo || 0) - b.sold_xo).toFixed(3)} kg</p>
-                       <p className="text-[10px] text-gray-500 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full text-center">Vốn: {formatNum(Number(b.cost_xo || b.cost_per_kg || 0))}</p>
-                    </div>
-                    <div className="bg-green-50/30 p-3 rounded-xl border border-green-100 flex flex-col justify-between items-center text-center">
-                       <p className="text-[10px] font-bold text-green-600 uppercase">Đẹp (Nhập {Number(b.weight_dep || 0).toFixed(2)})</p>
-                       <p className={`text-base font-black my-1 ${Number(b.weight_dep || 0) - b.sold_dep < 0 ? 'text-red-500' : 'text-green-700'}`}>{(Number(b.weight_dep || 0) - b.sold_dep).toFixed(3)} kg</p>
-                       <p className="text-[10px] text-gray-500 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full text-center">Vốn: {formatNum(Number(b.cost_dep || b.cost_per_kg || 0))}</p>
-                    </div>
-                    <div className="bg-orange-50/30 p-3 rounded-xl border border-orange-100 flex flex-col justify-between items-center text-center">
-                       <p className="text-[10px] font-bold text-orange-500 uppercase">Vừa (Nhập {Number(b.weight_vua || 0).toFixed(2)})</p>
-                       <p className={`text-base font-black my-1 ${Number(b.weight_vua || 0) - b.sold_vua < 0 ? 'text-red-500' : 'text-orange-700'}`}>{(Number(b.weight_vua || 0) - b.sold_vua).toFixed(3)} kg</p>
-                       <p className="text-[10px] text-gray-500 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full text-center">Vốn: {formatNum(Number(b.cost_vua || b.cost_per_kg || 0))}</p>
-                    </div>
-                    <div className="bg-red-50/30 p-3 rounded-xl border border-red-100 flex flex-col justify-between items-center text-center">
-                       <p className="text-[10px] font-bold text-red-500 uppercase">Xấu (Nhập {Number(b.weight_xau || 0).toFixed(2)})</p>
-                       <p className={`text-base font-black my-1 ${Number(b.weight_xau || 0) - b.sold_xau < 0 ? 'text-red-500' : 'text-red-700'}`}>{(Number(b.weight_xau || 0) - b.sold_xau).toFixed(3)} kg</p>
-                       <p className="text-[10px] text-gray-500 font-semibold mt-1 bg-white px-2 py-0.5 rounded border border-gray-200 w-full text-center">Vốn: {formatNum(Number(b.cost_xau || b.cost_per_kg || 0))}</p>
-                    </div>
-                 </div>
-                 
-                 {(Number(b.weight_xo || 0) - b.sold_xo < 0 || Number(b.weight_dep || 0) - b.sold_dep < 0 || Number(b.weight_vua || 0) - b.sold_vua < 0 || Number(b.weight_xau || 0) - b.sold_xau < 0) && (
-                     <div className="bg-red-50 p-3 rounded-xl mt-4 flex items-start gap-2 border border-red-200">
-                         <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16}/>
-                         <p className="text-[11px] text-red-700 font-medium leading-relaxed">Phát hiện Lô có số kg bị ÂM! Có thể do bạn đã xuất bán sai phân loại hoặc xuất quá số lượng nhập ban đầu. Hãy bấm nút Cây bút ở tên Lô để <b>Sửa lại gốc nhập</b> cho khớp.</p>
-                     </div>
-                 )}
-              </div>
-            </div>
-          ))}
+             )
+          })}
         </div>
       )}
 
       {/* FORM SỬA KHO CẬP NHẬT */}
       {editingBatch && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[24px] p-6 md:p-8 w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl relative custom-scrollbar">
-            <button onClick={() => setEditingBatch(null)} className="absolute top-5 right-5 text-gray-400 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 p-2 rounded-full transition-colors"><X size={20}/></button>
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-6">
-              <Pencil className="text-blue-500" size={22}/> Sửa Thông Tin Gốc Lô Hàng
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[24px] p-6 md:p-8 w-full max-w-3xl max-h-[95vh] overflow-y-auto shadow-2xl relative custom-scrollbar">
+            <button onClick={() => setEditingBatch(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 bg-gray-100 p-2 rounded-full"><X size={20}/></button>
+            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-5">
+              <Pencil className="text-blue-500" size={20}/> Sửa Thông Tin Lô
             </h2>
             
-            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-6 flex gap-3">
-               <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={18} />
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-5 flex gap-2">
+               <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16} />
                <div className="text-xs text-amber-800 leading-relaxed">
-                 <b>Lưu ý:</b> Bạn đang sửa <u className="font-semibold uppercase">Số lượng & Giá Vốn lúc mới mua vào</u> của nhà cung cấp.
-                 Nếu muốn làm giảm Tồn Kho hiện tại, hãy sang trang Đơn Hàng chốt 1 Đơn Hao Hụt.
+                 Chỉ sửa <b>Số lượng & Giá Vốn Mua Vào</b>. Muốn giảm tồn kho hiện tại hãy chốt Đơn Hao Hụt.
                </div>
             </div>
             
-            <form onSubmit={handleUpdateBatch} className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-gray-50 p-5 rounded-2xl border border-gray-200">
+            <form onSubmit={handleUpdateBatch} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-5 rounded-2xl border border-gray-200">
                 <div>
-                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Mã Lô</label>
-                  <input required className="w-full border border-gray-300 rounded-xl p-3 font-bold text-sm uppercase outline-none focus:border-blue-500 transition-all bg-white" value={editBatchForm.batch_code} onChange={e => setEditBatchForm({...editBatchForm, batch_code: e.target.value})} />
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Mã Lô</label>
+                  <input required className="w-full border border-gray-300 rounded-xl p-3 font-bold text-sm uppercase outline-none focus:border-blue-500 bg-white" value={editBatchForm.batch_code} onChange={e => setEditBatchForm({...editBatchForm, batch_code: e.target.value})} />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-blue-600 mb-1.5 flex items-center gap-1"><Calendar size={14}/> Ngày Nhập Lô</label>
-                  <input required type="date" className="w-full border border-blue-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-blue-50 transition-all" value={editBatchForm.purchase_date} onChange={e => setEditBatchForm({...editBatchForm, purchase_date: e.target.value})} />
+                  <label className="text-xs font-semibold text-blue-600 mb-1 flex items-center gap-1"><Calendar size={14}/> Ngày Nhập</label>
+                  <input required type="date" className="w-full border border-blue-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-blue-500 bg-blue-50" value={editBatchForm.purchase_date} onChange={e => setEditBatchForm({...editBatchForm, purchase_date: e.target.value})} />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Nguồn nhập (Ai bán)</label>
-                  <input required className="w-full border border-gray-300 rounded-xl p-3 font-medium text-sm outline-none focus:border-blue-500 transition-all bg-white" value={editBatchForm.supplier_name} onChange={e => setEditBatchForm({...editBatchForm, supplier_name: e.target.value})} />
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Nguồn nhập</label>
+                  <input required className="w-full border border-gray-300 rounded-xl p-3 text-sm outline-none focus:border-blue-500 bg-white" value={editBatchForm.supplier_name} onChange={e => setEditBatchForm({...editBatchForm, supplier_name: e.target.value})} />
                 </div>
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
-                 <label className="text-xs font-bold uppercase text-gray-800 mb-4 block">Sửa lại Khối Lượng và Giá Vốn Từng Loại</label>
-                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                 <label className="text-xs font-bold uppercase text-gray-800 mb-4 block">Sửa Khối Lượng & Giá Vốn</label>
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-gray-50 p-3 rounded-xl border border-gray-200">
-                        <span className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Hàng Xô</span>
-                        <input type="number" step="0.001" placeholder="Kg" className="w-full border border-gray-200 rounded p-2 font-bold text-sm text-center outline-none focus:border-blue-400 mb-2 bg-white" value={editBatchForm.weight_xo} onChange={e => setEditBatchForm({...editBatchForm, weight_xo: e.target.value})} />
-                        <input type="number" placeholder="Giá gốc (VNĐ)" className="w-full border border-gray-200 rounded p-2 font-semibold text-xs text-center outline-none focus:border-blue-400 bg-white" value={editBatchForm.cost_xo} onChange={e => setEditBatchForm({...editBatchForm, cost_xo: e.target.value})} />
+                        <span className="text-[10px] font-bold text-gray-500 uppercase block mb-1.5">Hàng Xô</span>
+                        <input type="text" placeholder="Kg" className="w-full border border-gray-200 rounded-lg p-2 font-bold text-sm text-center outline-none focus:border-blue-400 mb-2" value={editBatchForm.weight_xo} onChange={e => setEditBatchForm({...editBatchForm, weight_xo: e.target.value})} />
+                        <input type="number" placeholder="Giá gốc" className="w-full border border-gray-200 rounded-lg p-2 text-xs text-center outline-none focus:border-blue-400" value={editBatchForm.cost_xo} onChange={e => setEditBatchForm({...editBatchForm, cost_xo: e.target.value})} />
                     </div>
                     <div className="bg-green-50/50 p-3 rounded-xl border border-green-100">
-                        <span className="text-[10px] font-bold text-green-600 uppercase block mb-1">Hàng Đẹp</span>
-                        <input type="number" step="0.001" placeholder="Kg" className="w-full border border-green-200 rounded p-2 font-bold text-sm text-center outline-none focus:border-green-400 mb-2 bg-white" value={editBatchForm.weight_dep} onChange={e => setEditBatchForm({...editBatchForm, weight_dep: e.target.value})} />
-                        <input type="number" placeholder="Giá gốc (VNĐ)" className="w-full border border-green-200 rounded p-2 font-semibold text-xs text-center outline-none focus:border-green-400 bg-white" value={editBatchForm.cost_dep} onChange={e => setEditBatchForm({...editBatchForm, cost_dep: e.target.value})} />
+                        <span className="text-[10px] font-bold text-green-600 uppercase block mb-1.5">Hàng Đẹp</span>
+                        <input type="text" placeholder="Kg" className="w-full border border-green-200 rounded-lg p-2 font-bold text-sm text-center outline-none focus:border-green-400 mb-2" value={editBatchForm.weight_dep} onChange={e => setEditBatchForm({...editBatchForm, weight_dep: e.target.value})} />
+                        <input type="number" placeholder="Giá gốc" className="w-full border border-green-200 rounded-lg p-2 text-xs text-center outline-none focus:border-green-400" value={editBatchForm.cost_dep} onChange={e => setEditBatchForm({...editBatchForm, cost_dep: e.target.value})} />
                     </div>
                     <div className="bg-orange-50/50 p-3 rounded-xl border border-orange-100">
-                        <span className="text-[10px] font-bold text-orange-500 uppercase block mb-1">Hàng Vừa</span>
-                        <input type="number" step="0.001" placeholder="Kg" className="w-full border border-orange-200 rounded p-2 font-bold text-sm text-center outline-none focus:border-orange-400 mb-2 bg-white" value={editBatchForm.weight_vua} onChange={e => setEditBatchForm({...editBatchForm, weight_vua: e.target.value})} />
-                        <input type="number" placeholder="Giá gốc (VNĐ)" className="w-full border border-orange-200 rounded p-2 font-semibold text-xs text-center outline-none focus:border-orange-400 bg-white" value={editBatchForm.cost_vua} onChange={e => setEditBatchForm({...editBatchForm, cost_vua: e.target.value})} />
+                        <span className="text-[10px] font-bold text-orange-500 uppercase block mb-1.5">Hàng Vừa</span>
+                        <input type="text" placeholder="Kg" className="w-full border border-orange-200 rounded-lg p-2 font-bold text-sm text-center outline-none focus:border-orange-400 mb-2" value={editBatchForm.weight_vua} onChange={e => setEditBatchForm({...editBatchForm, weight_vua: e.target.value})} />
+                        <input type="number" placeholder="Giá gốc" className="w-full border border-orange-200 rounded-lg p-2 text-xs text-center outline-none focus:border-orange-400" value={editBatchForm.cost_vua} onChange={e => setEditBatchForm({...editBatchForm, cost_vua: e.target.value})} />
                     </div>
                     <div className="bg-red-50/50 p-3 rounded-xl border border-red-100">
-                        <span className="text-[10px] font-bold text-red-500 uppercase block mb-1">Hàng Xấu</span>
-                        <input type="number" step="0.001" placeholder="Kg" className="w-full border border-red-200 rounded p-2 font-bold text-sm text-center outline-none focus:border-red-400 mb-2 bg-white" value={editBatchForm.weight_xau} onChange={e => setEditBatchForm({...editBatchForm, weight_xau: e.target.value})} />
-                        <input type="number" placeholder="Giá gốc (VNĐ)" className="w-full border border-red-200 rounded p-2 font-semibold text-xs text-center outline-none focus:border-red-400 bg-white" value={editBatchForm.cost_xau} onChange={e => setEditBatchForm({...editBatchForm, cost_xau: e.target.value})} />
+                        <span className="text-[10px] font-bold text-red-500 uppercase block mb-1.5">Hàng Xấu</span>
+                        <input type="text" placeholder="Kg" className="w-full border border-red-200 rounded-lg p-2 font-bold text-sm text-center outline-none focus:border-red-400 mb-2" value={editBatchForm.weight_xau} onChange={e => setEditBatchForm({...editBatchForm, weight_xau: e.target.value})} />
+                        <input type="number" placeholder="Giá gốc" className="w-full border border-red-200 rounded-lg p-2 text-xs text-center outline-none focus:border-red-400" value={editBatchForm.cost_xau} onChange={e => setEditBatchForm({...editBatchForm, cost_xau: e.target.value})} />
                     </div>
                  </div>
               </div>
               
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-100">
-                 <label className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors">
+              <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-gray-100 items-center justify-between">
+                 <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded-xl border hover:bg-gray-100 transition-colors w-full sm:w-auto">
                    <input type="checkbox" className="w-4 h-4 accent-blue-600 rounded" checked={editBatchForm.has_receipt} onChange={e => setEditBatchForm({...editBatchForm, has_receipt: e.target.checked})} />
                    <span className="text-sm font-semibold text-gray-700">Lô này đã khai báo Thuế</span>
                  </label>
                  <div className="flex gap-3 w-full sm:w-auto">
-                    <button type="button" onClick={() => setEditingBatch(null)} className="flex-1 sm:flex-none px-6 py-3 rounded-xl font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">Hủy</button>
-                    <button type="submit" className="flex-1 sm:flex-none bg-blue-600 text-white font-bold rounded-xl px-8 py-3 hover:bg-blue-700 transition-all shadow-md">Lưu Gốc Nhập</button>
+                    <button type="button" onClick={() => setEditingBatch(null)} className="w-1/3 sm:w-auto px-6 py-3 rounded-xl font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">Hủy</button>
+                    <button type="submit" className="w-2/3 sm:w-auto bg-blue-600 text-white font-bold rounded-xl px-8 py-3 shadow-md hover:bg-blue-700 transition-colors">Lưu Gốc Nhập</button>
                  </div>
               </div>
             </form>
@@ -527,20 +488,20 @@ export default function InventoryPage() {
 
       {/* POPUP LỊCH SỬ KÈM NÚT "XÓA ĐỂ HOÀN KHO" */}
       {modalData && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[24px] p-6 md:p-8 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl relative">
-            <button onClick={() => setModalData(null)} className="absolute top-5 right-5 text-gray-400 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 p-2 rounded-full transition-colors"><X size={20}/></button>
-            <div className="mb-6 pr-8 border-b border-gray-100 pb-4">
-               <h2 className="text-xl font-bold text-gray-900">
-                  {modalData.type === 'tax' ? 'Lịch sử Thuế đơn hàng' : 
-                   modalData.type === 'loss' ? 'Chi tiết hao hụt yến' :
-                   modalData.type === 'revenue' ? 'Danh sách doanh thu thu về' :
-                   modalData.type === 'profit' ? 'Lợi nhuận ròng từng đơn' :
-                   modalData.type === 'ship' ? 'Phí vận chuyển chi ra' : 'Lịch sử xuất kho Lô ' + modalData.batch.batch_code}
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-[24px] p-6 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl relative">
+            <button onClick={() => setModalData(null)} className="absolute top-5 right-5 text-gray-400 bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors"><X size={20}/></button>
+            <div className="mb-5 pr-8 border-b border-gray-100 pb-4">
+               <h2 className="text-lg font-bold text-gray-900">
+                  {modalData.type === 'tax' ? 'Lịch sử Thuế' : 
+                   modalData.type === 'loss' ? 'Chi tiết hao hụt' :
+                   modalData.type === 'revenue' ? 'Doanh thu thu về' :
+                   modalData.type === 'profit' ? 'Lợi nhuận ròng' :
+                   modalData.type === 'ship' ? 'Phí vận chuyển' : 'Lịch sử xuất kho Lô ' + modalData.batch.batch_code}
                </h2>
             </div>
             <div className="overflow-x-auto overflow-y-auto pr-2 space-y-2 custom-scrollbar flex-1">
-              <table className="w-full text-left border-collapse min-w-[600px]">
+              <table className="w-full text-left border-collapse min-w-[500px]">
                 <thead className="bg-gray-50 text-[10px] font-bold uppercase text-gray-500">
                   <tr>
                     <th className="p-3 rounded-l-lg">Khách hàng</th>
@@ -557,18 +518,18 @@ export default function InventoryPage() {
                 <tbody className="text-sm">
                   {modalData.batch.orders?.map((o: any) => (
                     <tr key={o.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors group">
-                      <td className="p-3 font-semibold text-gray-800">{o.customers?.name}</td>
+                      <td className="p-3 font-semibold text-gray-800 truncate max-w-[120px]">{o.customers?.name}</td>
                       <td className="p-3 text-gray-500 text-xs">{new Date(o.created_at).toLocaleDateString('vi-VN')}</td>
                       <td className="p-3 text-center"><span className="text-orange-600 uppercase text-[10px] font-bold bg-orange-50 px-2 py-0.5 rounded">{o.grade_type || 'Xô'}</span></td>
                       <td className="p-3 text-gray-900 font-bold text-right">{Number(o.weight).toFixed(3)}kg</td>
-                      {modalData.type === 'tax' && <td className="p-3 text-orange-600 font-medium text-right">-{Number(o.tax_amount).toLocaleString()}đ</td>}
-                      {modalData.type === 'loss' && <td className="p-3 text-red-600 font-medium text-right">{Number(o.weight_loss).toFixed(3)}kg</td>}
-                      {modalData.type === 'ship' && <td className="p-3 text-purple-600 font-medium text-right">-{Number(o.shipping_fee).toLocaleString()}đ</td>}
+                      {modalData.type === 'tax' && <td className="p-3 text-orange-600 text-right">-{Number(o.tax_amount).toLocaleString()}đ</td>}
+                      {modalData.type === 'loss' && <td className="p-3 text-red-600 text-right">{Number(o.weight_loss).toFixed(3)}kg</td>}
+                      {modalData.type === 'ship' && <td className="p-3 text-purple-600 text-right">-{Number(o.shipping_fee).toLocaleString()}đ</td>}
                       {modalData.type === 'profit' && <td className="p-3 text-emerald-600 font-bold text-right">+{Number(o.profit).toLocaleString()}đ</td>}
                       
-                      <td className="p-3 text-right flex justify-end items-center h-full">
-                         <span className="text-blue-600 font-bold group-hover:hidden block">{Number(o.revenue).toLocaleString()}đ</span>
-                         <button onClick={() => handleDeleteOrderFromHistory(o.id)} className="hidden group-hover:flex items-center justify-center gap-1 text-[11px] text-red-500 hover:text-white bg-red-50 hover:bg-red-500 px-3 py-1.5 rounded-md transition-all font-bold" title="Xóa để trả yến lại vào kho">
+                      <td className="p-3 text-right">
+                         <span className="text-blue-600 font-bold block">{Number(o.revenue).toLocaleString()}đ</span>
+                         <button onClick={() => handleDeleteOrderFromHistory(o.id)} className="mt-1 flex items-center justify-end gap-1 text-[10px] text-red-500 font-bold ml-auto opacity-50 hover:opacity-100 transition-opacity" title="Xóa để trả yến lại vào kho">
                             <Trash2 size={12}/> Hoàn Kho
                          </button>
                       </td>
@@ -576,7 +537,7 @@ export default function InventoryPage() {
                   ))}
                 </tbody>
               </table>
-              {(!modalData.batch.orders || modalData.batch.orders.length === 0) && <p className="text-center py-10 text-gray-400 font-medium text-sm">Lô này chưa xuất kho đơn nào.</p>}
+              {(!modalData.batch.orders || modalData.batch.orders.length === 0) && <p className="text-center py-8 text-gray-400 text-sm">Chưa xuất đơn nào.</p>}
             </div>
           </div>
         </div>

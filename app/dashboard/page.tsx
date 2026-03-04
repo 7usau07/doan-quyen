@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
+  BarChart as RechartsBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts'
 import { 
   Package, DollarSign, TrendingUp, Receipt, Truck, Wallet, Scale, Droplet, X, History, ShoppingBag, FileWarning, Clock
@@ -81,166 +81,170 @@ export default function DashboardPage() {
   }, [data])
 
   if (!hasMounted) return null
-  if (loading) return <div className="p-10 font-black text-gray-300 animate-pulse text-center uppercase tracking-widest">Hệ thống YẾN SÀO ĐOÀN QUYÊN đang tổng hợp sổ sách...</div>
+  if (loading) return <div className="p-10 font-bold text-gray-400 animate-pulse text-center uppercase tracking-widest text-sm">Hệ thống ĐOÀN QUYÊN đang tải dữ liệu...</div>
 
   return (
-    <div className="p-6 space-y-8 animate-in fade-in duration-700 pb-20 max-w-7xl mx-auto">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase italic">Trung tâm điều hành YẾN SÀO ĐOÀN QUYÊN</h1>
-        <p className="text-gray-500 font-bold text-[10px] uppercase tracking-widest">Báo cáo tài chính & Tồn kho thực tế</p>
+    <div className="p-4 md:p-8 space-y-6 md:space-y-8 animate-in fade-in duration-500 pb-20 max-w-7xl mx-auto font-sans">
+      
+      <div className="flex flex-col gap-1 mb-2">
+        <h1 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tighter uppercase">Trung tâm điều hành</h1>
+        <p className="text-gray-500 font-bold text-[10px] md:text-xs uppercase tracking-widest">Báo cáo tài chính & Tồn kho thực tế</p>
       </div>
 
       {stats.weightWithoutReceipt > 0 && (
-        <div className="bg-red-50 border border-red-200 p-6 rounded-[30px] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm animate-in zoom-in-95">
-            <div className="flex gap-4 items-center">
-                <div className="bg-red-100 p-3 rounded-2xl"><FileWarning className="text-red-500" size={28} /></div>
+        <div className="bg-red-50 border border-red-200 p-4 md:p-6 rounded-[24px] flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm animate-in zoom-in-95">
+            <div className="flex gap-3 md:gap-4 items-center">
+                <div className="bg-red-100 p-2.5 rounded-2xl"><FileWarning className="text-red-500" size={24} /></div>
                 <div>
-                   <h4 className="font-black text-red-800 text-sm uppercase tracking-wider">Cảnh báo thiếu Bảng Kê (Chứng từ)</h4>
-                   <p className="text-red-600 text-xs font-bold mt-1">Đang có <span className="text-xl font-black">{stats.weightWithoutReceipt.toFixed(3)}kg</span> yến mua vào chưa có bảng kê hợp lệ thuế.</p>
+                   <h4 className="font-bold text-red-800 text-xs md:text-sm uppercase tracking-wider">Cảnh báo thiếu Chứng từ Thuế</h4>
+                   <p className="text-red-600 text-[10px] md:text-xs font-semibold mt-0.5">Đang có <span className="text-sm md:text-base font-black">{stats.weightWithoutReceipt.toFixed(3)}kg</span> mua vào chưa có bảng kê.</p>
                 </div>
             </div>
-            <div className="flex items-center gap-4 w-full md:w-auto">
-                <div className="text-right hidden md:block">
-                    <p className="text-[10px] text-red-400 font-black uppercase">Đã có bảng kê</p>
-                    <p className="text-sm font-black text-green-600">{stats.weightWithReceipt.toFixed(3)}kg an toàn</p>
+            <div className="flex items-center justify-between w-full md:w-auto gap-4">
+                <div className="text-left md:text-right">
+                    <p className="text-[9px] text-red-400 font-bold uppercase">Đã có bảng kê</p>
+                    <p className="text-xs font-black text-green-600">{stats.weightWithReceipt.toFixed(3)}kg an toàn</p>
                 </div>
-                <Link href="/dashboard/inventory" className="bg-red-600 text-white px-6 py-3 rounded-xl text-xs font-black uppercase hover:bg-red-700 w-full md:w-auto text-center shadow-lg shadow-red-500/30">Đi bổ sung ngay</Link>
+                <Link href="/dashboard/inventory" className="bg-red-600 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase hover:bg-red-700 transition-colors shadow-md">Bổ sung ngay</Link>
             </div>
         </div>
       )}
 
-      {/* LƯỚI 9 CHỈ SỐ KINH DOANH (GIỮ NGUYÊN MÀU SẾP THÍCH) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        <MetricCard title="Tổng kg yến nhập" value={`${stats.totalWeightPurchased.toFixed(3)} kg`} icon={<Package size={20}/>} color="bg-slate-800" onClick={() => setSelectedMetric({title: 'Lịch sử nhập lô', type: 'batches'})} />
-        <MetricCard title="Tổng kg đã xuất" value={`${stats.totalSoldWeight.toFixed(3)} kg`} icon={<ShoppingBag size={20}/>} color="bg-cyan-500" onClick={() => setSelectedMetric({title: 'Lịch sử khách mua', type: 'sold'})} />
-        <MetricCard title="Hao hụt thực tế" value={`${stats.totalLossWeight.toFixed(3)} kg`} icon={<Scale size={20}/>} color="bg-red-500" onClick={() => setSelectedMetric({title: 'Lịch sử hao hụt đơn hàng', type: 'loss'})} />
-        <MetricCard title="Tồn kho hiện tại" value={`${stats.remainingWeight.toFixed(3)} kg`} icon={<Droplet size={20}/>} color="bg-blue-600" />
+      {/* LƯỚI 8 CHỈ SỐ KINH DOANH (MÀU SẮC GRADIENT SANG TRỌNG) */}
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <MetricCard title="Tổng yến nhập" value={`${stats.totalWeightPurchased.toFixed(3)} kg`} icon={<Package size={18}/>} color="bg-gradient-to-br from-slate-700 to-slate-900" onClick={() => setSelectedMetric({title: 'Lịch sử nhập lô', type: 'batches'})} />
+        <MetricCard title="Tổng đã xuất" value={`${stats.totalSoldWeight.toFixed(3)} kg`} icon={<ShoppingBag size={18}/>} color="bg-gradient-to-br from-cyan-500 to-cyan-700" onClick={() => setSelectedMetric({title: 'Lịch sử khách mua', type: 'sold'})} />
+        <MetricCard title="Hao hụt thực tế" value={`${stats.totalLossWeight.toFixed(3)} kg`} icon={<Scale size={18}/>} color="bg-gradient-to-br from-red-500 to-rose-600" onClick={() => setSelectedMetric({title: 'Lịch sử hao hụt đơn hàng', type: 'loss'})} />
+        <MetricCard title="Tồn kho hiện tại" value={`${stats.remainingWeight.toFixed(3)} kg`} icon={<Droplet size={18}/>} color="bg-gradient-to-br from-blue-500 to-indigo-600" />
         
-        <MetricCard title="Tổng vốn đầu tư" value={`${stats.totalPurchaseMoney.toLocaleString()}đ`} icon={<DollarSign size={20}/>} color="bg-slate-700" />
-        
-        <MetricCard 
-          title="Doanh thu (Thực thu)" 
-          value={`${stats.totalRevenue.toLocaleString()}đ`} 
-          icon={<TrendingUp size={24}/>} 
-          color="bg-fuchsia-600" 
-          subText={`Đang chờ thu: ${stats.pendingRevenue.toLocaleString()}đ`}
-          onClick={() => setSelectedMetric({title: 'Chi tiết doanh thu', type: 'revenue'})} 
-        />
-        
-        <MetricCard title="Quỹ Thuế đã xuất (5%)" value={`-${stats.totalTax.toLocaleString()}đ`} icon={<Receipt size={20}/>} color="bg-orange-500" onClick={() => setSelectedMetric({title: 'Lịch sử nộp thuế', type: 'tax'})} />
-        <MetricCard title="Phí ship đã xuất" value={`-${stats.totalShip.toLocaleString()}đ`} icon={<Truck size={20}/>} color="bg-purple-600" onClick={() => setSelectedMetric({title: 'Lịch sử phí ship', type: 'ship'})} />
-        
-        {/* LỢI NHUẬN */}
-        <div className="col-span-1 md:col-span-2 lg:col-span-3 xl:col-span-4">
-            <MetricCard 
-              title="LỢI NHUẬN RÒNG (TRONG TÚI)" 
-              value={`+${stats.totalProfit.toLocaleString()}đ`} 
-              icon={<Wallet size={32}/>} 
-              color="bg-green-600" 
-              isMain 
-              subText={`Khoản lãi đang kẹt ngoài đường (Chưa giao/Nợ): +${stats.pendingProfit.toLocaleString()}đ`}
-              onClick={() => setSelectedMetric({title: 'Báo cáo lãi ròng từng đơn', type: 'profit'})} 
-            />
-        </div>
+        <MetricCard title="Tổng vốn đầu tư" value={`${stats.totalPurchaseMoney.toLocaleString()}đ`} icon={<DollarSign size={18}/>} color="bg-gradient-to-br from-gray-700 to-gray-800" />
+        <MetricCard title="Thực thu" value={`${stats.totalRevenue.toLocaleString()}đ`} icon={<TrendingUp size={18}/>} color="bg-gradient-to-br from-fuchsia-500 to-purple-700" subText={`Chờ thu: ${stats.pendingRevenue.toLocaleString()}đ`} onClick={() => setSelectedMetric({title: 'Chi tiết doanh thu', type: 'revenue'})} />
+        <MetricCard title="Quỹ Thuế (5%)" value={`-${stats.totalTax.toLocaleString()}đ`} icon={<Receipt size={18}/>} color="bg-gradient-to-br from-orange-400 to-orange-600" onClick={() => setSelectedMetric({title: 'Lịch sử nộp thuế', type: 'tax'})} />
+        <MetricCard title="Phí vận chuyển" value={`-${stats.totalShip.toLocaleString()}đ`} icon={<Truck size={18}/>} color="bg-gradient-to-br from-violet-500 to-purple-600" onClick={() => setSelectedMetric({title: 'Lịch sử phí ship', type: 'ship'})} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* LỢI NHUẬN RÒNG (FULL WIDTH) */}
+      <div className="w-full">
+         <MetricCard 
+            title="LỢI NHUẬN RÒNG (TRONG TÚI)" 
+            value={`+${stats.totalProfit.toLocaleString()}đ`} 
+            icon={<Wallet size={24}/>} 
+            color="bg-gradient-to-br from-emerald-500 to-green-700" 
+            isMain 
+            subText={`Lãi kẹt ngoài đường (Chưa giao/Nợ): +${stats.pendingProfit.toLocaleString()}đ`}
+            onClick={() => setSelectedMetric({title: 'Báo cáo lãi ròng từng đơn', type: 'profit'})} 
+         />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* ĐÃ SỬA THÀNH BIỂU ĐỒ ĐƯỜNG (LINE CHART) ĐỂ KHÔNG BỊ BẸP CỘT LỢI NHUẬN NỮA */}
-        <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm min-h-[400px]">
-          <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter mb-6 flex items-center justify-between">
-            <span>📊 Dòng tiền thực tế</span>
-            <span className="text-[10px] bg-blue-100 text-blue-600 px-3 py-1 rounded-full tracking-widest">BIỂU ĐỒ ĐƯỜNG</span>
-          </h3>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8', fontWeight: 'bold' }} dy={10} />
-              <YAxis tickFormatter={(v) => `${v / 1000000}M`} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8', fontWeight: 'bold' }} />
-              
-              <Tooltip 
-                cursor={{ stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '4 4' }} 
-                contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold', fontSize: '12px' }} 
-                formatter={(value: any, name: any) => [`${Number(value).toLocaleString('vi-VN')}đ`, name]} 
-              />
-              
-              <Legend wrapperStyle={{paddingTop: '20px', fontSize: '11px', fontWeight: 'black', textTransform: 'uppercase'}} />
-              
-              {/* Thay Bar bằng Line */}
-              <Line type="monotone" dataKey="Doanh_thu" name="Thực Thu" stroke="#d946ef" strokeWidth={4} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
-              <Line type="monotone" dataKey="Loi_nhuan" name="Lãi Bỏ Túi" stroke="#10b981" strokeWidth={4} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
-            </LineChart>
-          </ResponsiveContainer>
+        {/* BIỂU ĐỒ CỘT (BAR CHART) - RÕ RÀNG, CHUYÊN NGHIỆP */}
+        <div className="bg-white p-5 md:p-8 rounded-[24px] border border-gray-100 shadow-sm min-h-[350px] flex flex-col">
+          <div className="mb-6 flex items-center justify-between">
+             <h3 className="text-base md:text-lg font-black text-gray-900 uppercase tracking-tight">Dòng tiền thực tế</h3>
+             <span className="text-[9px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md font-bold uppercase border border-blue-100">Biểu Đồ Cột</span>
+          </div>
+          <div className="flex-1 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <RechartsBarChart data={stats.chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }} barGap={6}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b', fontWeight: 'bold' }} dy={10} />
+                <YAxis tickFormatter={(v) => `${v / 1000000}Tr`} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b', fontWeight: 'bold' }} />
+                
+                <Tooltip 
+                  cursor={{ fill: '#f8fafc' }} 
+                  contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold', fontSize: '11px' }} 
+                  formatter={(value: any, name: any) => [`${Number(value).toLocaleString('vi-VN')}đ`, name === 'Doanh_thu' ? 'Thực Thu' : 'Lãi Bỏ Túi']} 
+                />
+                
+                <Legend wrapperStyle={{paddingTop: '15px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase'}} />
+                
+                <Bar dataKey="Doanh_thu" name="Thực Thu" fill="#d946ef" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="Loi_nhuan" name="Lãi Bỏ Túi" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </RechartsBarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
-        <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm space-y-6">
-          <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter flex items-center gap-2">🔥 Đơn mới nhất</h3>
-          <div className="space-y-4">
-            {data.orders.slice(0, 5).map((o) => (
-              <div key={o.id} className="flex justify-between items-center p-5 bg-gray-50 rounded-[30px] hover:border-blue-200 border border-transparent transition-all">
-                <div className="flex items-center gap-4">
-                  <div className="bg-blue-100 text-blue-600 w-10 h-10 rounded-2xl flex items-center justify-center font-black text-[10px]">{formatDate(o.created_at)}</div>
-                  <div>
-                    <p className="font-black text-gray-900 leading-none">{o.customers?.name}</p>
-                    <p className={`text-[10px] font-bold mt-1 uppercase flex items-center gap-1 ${o.status === 'Hoàn tất' ? 'text-green-600' : 'text-orange-500'}`}>
+        {/* DANH SÁCH ĐƠN MỚI */}
+        <div className="bg-white p-5 md:p-8 rounded-[24px] border border-gray-100 shadow-sm flex flex-col max-h-[450px]">
+          <h3 className="text-base md:text-lg font-black text-gray-900 uppercase tracking-tight mb-5">Đơn mới nhất</h3>
+          <div className="space-y-3 overflow-y-auto custom-scrollbar pr-2 flex-1">
+            {data.orders.slice(0, 10).map((o) => (
+              <div key={o.id} className="flex justify-between items-center p-4 bg-gray-50/50 hover:bg-blue-50/30 rounded-xl border border-gray-100 transition-colors group">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white border border-gray-200 text-gray-600 w-10 h-10 rounded-lg flex items-center justify-center font-bold text-[9px] shrink-0 shadow-sm">{formatDate(o.created_at)}</div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900 text-sm truncate">{o.customers?.name}</p>
+                    <p className={`text-[9px] font-bold mt-0.5 uppercase flex items-center gap-1 ${o.status === 'Hoàn tất' ? 'text-emerald-600' : 'text-orange-500'}`}>
                       {o.weight} kg • {o.status === 'Hoàn tất' ? 'Đã thu tiền' : 'Đang chờ thu'}
                     </p>
                   </div>
                 </div>
-                <p className={`font-black ${o.status === 'Hoàn tất' ? 'text-emerald-600' : 'text-gray-400'}`}>
-                  +{Number(o.profit).toLocaleString()}đ
-                </p>
+                <div className="text-right pl-2">
+                   <p className="font-black text-blue-600 text-sm">{Number(o.revenue).toLocaleString()}đ</p>
+                   <p className={`text-[9px] font-bold mt-0.5 ${o.status === 'Hoàn tất' ? 'text-emerald-600' : 'text-gray-400'}`}>
+                     +{Number(o.profit).toLocaleString()}đ
+                   </p>
+                </div>
               </div>
             ))}
+            {data.orders.length === 0 && <p className="text-center text-sm text-gray-400 py-10">Chưa có dữ liệu.</p>}
           </div>
         </div>
       </div>
 
       {/* POPUP LỊCH SỬ ĐỐI SOÁT */}
       {selectedMetric && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-md">
-          <div className="bg-white rounded-[40px] p-8 w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col relative shadow-2xl animate-in zoom-in-95">
-            <button onClick={() => setSelectedMetric(null)} className="absolute top-6 right-6 p-2 bg-gray-100 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors"><X size={24}/></button>
-            <div className="mb-8"><h2 className="text-3xl font-black uppercase tracking-tighter text-gray-900 flex items-center gap-3"><History className="text-blue-500" /> {selectedMetric.title}</h2><p className="text-gray-400 font-bold text-[10px] uppercase mt-1 tracking-widest">Dữ liệu đối soát DD PRIME</p></div>
-            <div className="overflow-y-auto pr-2">
-                <table className="w-full text-left">
-                  <thead className="text-[10px] font-black uppercase text-gray-400 border-b">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 md:p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-[24px] p-6 md:p-8 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col relative shadow-2xl animate-in zoom-in-95">
+            <button onClick={() => setSelectedMetric(null)} className="absolute top-5 right-5 p-1.5 bg-gray-100 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors"><X size={20}/></button>
+            <div className="mb-6 border-b border-gray-100 pb-4">
+               <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight text-gray-900 flex items-center gap-2"><History className="text-blue-500" size={24} /> {selectedMetric.title}</h2>
+            </div>
+            <div className="overflow-x-auto overflow-y-auto pr-1 flex-1 custom-scrollbar">
+                <table className="w-full text-left border-collapse min-w-[500px]">
+                  <thead className="bg-gray-50 text-[9px] font-black uppercase text-gray-500">
                     <tr>
-                      <th className="p-4">{selectedMetric.type === 'batches' ? 'Mã Lô' : 'Khách hàng'}</th>
-                      <th className="p-4">Trạng thái</th>
-                      {selectedMetric.type === 'tax' && <th className="p-4">Thuế (5%)</th>}
-                      {selectedMetric.type === 'ship' && <th className="p-4">Phí ship</th>}
-                      {selectedMetric.type === 'loss' && <th className="p-4">Hao hụt (kg)</th>}
-                      {selectedMetric.type === 'profit' && <th className="p-4">Lãi ròng</th>}
-                      <th className="p-4">{selectedMetric.type === 'batches' ? 'Số kg nhập' : 'Số kg mua'}</th>
-                      <th className="p-4">Doanh thu</th>
+                      <th className="p-3 rounded-l-lg">{selectedMetric.type === 'batches' ? 'Mã Lô' : 'Khách hàng'}</th>
+                      <th className="p-3">Trạng thái</th>
+                      {selectedMetric.type === 'tax' && <th className="p-3 text-right text-orange-500">Thuế (5%)</th>}
+                      {selectedMetric.type === 'ship' && <th className="p-3 text-right text-purple-600">Phí ship</th>}
+                      {selectedMetric.type === 'loss' && <th className="p-3 text-right text-red-500">Hao hụt (kg)</th>}
+                      {selectedMetric.type === 'profit' && <th className="p-3 text-right text-emerald-600">Lãi ròng</th>}
+                      <th className="p-3 text-right">{selectedMetric.type === 'batches' ? 'Số kg nhập' : 'Số kg mua'}</th>
+                      <th className="p-3 text-right rounded-r-lg">Doanh thu</th>
                     </tr>
                   </thead>
-                  <tbody className="text-sm font-bold">
+                  <tbody className="text-xs md:text-sm font-semibold">
                     {selectedMetric.type === 'batches' ? data.batches.map(b => (
-                      <tr key={b.id} className="border-b hover:bg-gray-50">
-                        <td className="p-4 text-blue-600">{b.batch_code}</td>
-                        <td className="p-4"><span className="bg-gray-100 px-2 py-1 rounded text-xs">Kho</span></td>
-                        <td className="p-4">{Number(b.total_weight).toFixed(3)}kg</td>
-                        <td className="p-4">{Number(b.total_weight * b.cost_per_kg).toLocaleString()}đ</td>
+                      <tr key={b.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="p-3 text-blue-600 font-black">{b.batch_code}</td>
+                        <td className="p-3"><span className="bg-gray-100 px-2 py-0.5 rounded text-[10px]">Kho</span></td>
+                        <td className="p-3 text-right">{Number(b.total_weight).toFixed(3)}kg</td>
+                        <td className="p-3 text-right font-black text-gray-800">{Number(b.total_weight * b.cost_per_kg).toLocaleString()}đ</td>
                       </tr>
                     )) : data.orders.map(o => (
-                      <tr key={o.id} className="border-b hover:bg-gray-50">
-                        <td className="p-4 text-gray-900">{o.customers?.name}</td>
-                        <td className="p-4">
-                          <span className={`px-2 py-1 rounded text-[10px] uppercase ${o.status === 'Hoàn tất' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                      <tr key={o.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="p-3 text-gray-900 truncate max-w-[120px]">{o.customers?.name}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${o.status === 'Hoàn tất' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-orange-50 text-orange-700 border border-orange-100'}`}>
                             {o.status}
                           </span>
                         </td>
-                        {selectedMetric.type === 'tax' && <td className="p-4 text-red-500">-{Number(o.tax_amount).toLocaleString()}đ</td>}
-                        {selectedMetric.type === 'ship' && <td className="p-4 text-purple-600">-{Number(o.shipping_fee).toLocaleString()}đ</td>}
-                        {selectedMetric.type === 'loss' && <td className="p-4 text-red-500">{Number(o.weight_loss).toFixed(3)}kg</td>}
-                        {selectedMetric.type === 'profit' && <td className="p-4 text-emerald-600">+{Number(o.profit).toLocaleString()}đ</td>}
-                        <td className="p-4">{Number(o.weight).toFixed(3)}kg</td><td className="p-4 text-blue-600">{Number(o.revenue).toLocaleString()}đ</td>
+                        {selectedMetric.type === 'tax' && <td className="p-3 text-right text-orange-600">-{Number(o.tax_amount).toLocaleString()}đ</td>}
+                        {selectedMetric.type === 'ship' && <td className="p-3 text-right text-purple-600">-{Number(o.shipping_fee).toLocaleString()}đ</td>}
+                        {selectedMetric.type === 'loss' && <td className="p-3 text-right text-red-600">{Number(o.weight_loss).toFixed(3)}kg</td>}
+                        {selectedMetric.type === 'profit' && <td className="p-3 text-right text-emerald-600 font-black">+{Number(o.profit).toLocaleString()}đ</td>}
+                        <td className="p-3 text-right">{Number(o.weight).toFixed(3)}kg</td>
+                        <td className="p-3 text-right font-black text-blue-600">{Number(o.revenue).toLocaleString()}đ</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {((selectedMetric.type === 'batches' && data.batches.length === 0) || (selectedMetric.type !== 'batches' && data.orders.length === 0)) && (
+                   <p className="text-center py-10 text-gray-400 text-xs font-medium">Chưa có dữ liệu đối soát.</p>
+                )}
             </div>
           </div>
         </div>
@@ -251,19 +255,18 @@ export default function DashboardPage() {
 
 function MetricCard({ title, value, icon, color, isMain, subText, onClick }: any) {
   return (
-    <div onClick={onClick} className={`${color} ${isMain ? 'p-10' : 'p-6'} rounded-[40px] text-white shadow-xl flex flex-col justify-between transition-all duration-300 ${onClick ? 'cursor-pointer hover:scale-[1.03]' : ''}`}>
+    <div onClick={onClick} className={`${color} ${isMain ? 'p-6 md:p-8' : 'p-4 md:p-5'} rounded-[20px] md:rounded-[24px] text-white shadow-md flex flex-col justify-between transition-all duration-300 ${onClick ? 'cursor-pointer hover:-translate-y-1 hover:shadow-xl' : ''}`}>
       <div className="flex justify-between items-start">
-        <div className="bg-white/20 p-3 rounded-2xl">{icon}</div>
-        {onClick && <div className="text-[8px] font-black uppercase bg-black/20 px-2 py-1 rounded-full hover:bg-black/40 transition">Xem đối soát</div>}
+        <div className="bg-white/20 p-2 md:p-2.5 rounded-xl backdrop-blur-sm">{icon}</div>
+        {onClick && <div className="text-[8px] md:text-[9px] font-bold uppercase bg-black/20 px-2 py-1 rounded-md hover:bg-black/40 transition-colors backdrop-blur-sm">Xem đối soát</div>}
       </div>
-      <div className="mt-6">
-        <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-1">{title}</p>
-        <h2 className={`${isMain ? 'text-4xl' : 'text-3xl'} font-black tracking-tighter truncate`} title={value}>{value}</h2>
+      <div className="mt-4 md:mt-5">
+        <p className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1">{title}</p>
+        <h2 className={`${isMain ? 'text-2xl md:text-4xl' : 'text-xl md:text-2xl'} font-black tracking-tight truncate`} title={value}>{value}</h2>
         
-        {/* HIỆN THÔNG BÁO TIỀN ĐANG CHỜ THU */}
         {subText && (
-          <div className="mt-4 pt-3 border-t border-white/20 flex items-center gap-2 text-xs font-bold opacity-90">
-            <Clock size={14} className="animate-pulse" /> {subText}
+          <div className="mt-3 pt-2 border-t border-white/20 flex items-center gap-1.5 text-[9px] md:text-xs font-medium opacity-90">
+            <Clock size={12} className="animate-pulse" /> <span className="truncate">{subText}</span>
           </div>
         )}
       </div>

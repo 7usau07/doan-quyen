@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Calculator, ArrowRight, Droplet, Users, Zap, Target, Package, DollarSign, Info } from 'lucide-react'
+import { Calculator, ArrowRight, Droplet, Users, Target, Package, DollarSign, Info } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function ProductionPage() {
@@ -17,12 +17,11 @@ export default function ProductionPage() {
     refinedWeight: '',
     laborCost: '',
     utilityCost: '',
-    targetProfit100g: '400000' // Mặc định lời 400k / 100g như sếp muốn
+    targetProfit100g: '400000' // Mặc định lời 400k / 100g
   })
 
   useEffect(() => {
     async function fetchBatches() {
-      // ĐÃ FIX: Lấy Lô hàng kèm theo Đơn hàng để tính Tồn Kho Thực Tế
       const { data: batchData } = await supabase
         .from('batches')
         .select('*, orders(weight, weight_loss)')
@@ -138,28 +137,31 @@ export default function ProductionPage() {
     }
   }
 
-  if (loading) return <div className="p-10 font-black text-gray-400 animate-pulse text-center uppercase tracking-widest">Đang khởi động Máy Tính Gia Công...</div>
+  if (loading) return <div className="p-10 font-bold text-gray-400 animate-pulse text-center uppercase tracking-widest text-sm">Đang khởi động Máy Tính Gia Công...</div>
 
   return (
-    <div className="p-6 space-y-8 animate-in fade-in duration-500 pb-20 max-w-6xl mx-auto">
+    <div className="p-4 md:p-8 space-y-6 md:space-y-8 animate-in fade-in duration-500 pb-24 max-w-6xl mx-auto font-sans bg-gray-50 min-h-screen">
       
-      <div className="bg-gray-900 rounded-[40px] p-8 text-white shadow-2xl flex flex-col md:flex-row justify-between items-center gap-6">
+      {/* HEADER (MOBILE TỐI ƯU) */}
+      <div className="bg-gray-900 rounded-[24px] md:rounded-[40px] p-6 md:p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
          <div>
-            <h1 className="text-3xl font-black uppercase tracking-tighter flex items-center gap-3"><Calculator className="text-orange-400" size={32}/> Máy Tính Gia Công</h1>
-            <p className="text-gray-400 font-bold mt-1 tracking-tight">Tính chính xác giá vốn Tinh Chế sau hao hụt & Định giá bán</p>
+            <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter flex items-center gap-2"><Calculator className="text-orange-400" size={28}/> Sổ Gia Công</h1>
+            <p className="text-gray-400 font-medium text-xs md:text-sm mt-1 tracking-tight">Tính chính xác giá vốn Tinh Chế sau hao hụt & Định giá bán</p>
          </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
         
         {/* KHU VỰC NHẬP LIỆU (CỘT TRÁI) */}
-        <div className="lg:col-span-5 space-y-6">
-           <div className="bg-white p-6 rounded-[30px] border border-gray-200 shadow-sm space-y-5">
-              <h3 className="font-black uppercase tracking-tighter text-gray-900 flex items-center gap-2 border-b pb-4"><Package className="text-blue-500" size={18}/> 1. Xuất Yến Thô</h3>
+        <div className="lg:col-span-5 space-y-5 md:space-y-6">
+           
+           {/* BƯỚC 1 */}
+           <div className="bg-white p-5 md:p-6 rounded-[24px] border border-gray-200 shadow-sm space-y-4 md:space-y-5">
+              <h3 className="font-bold uppercase text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3 text-sm md:text-base"><Package className="text-blue-500" size={18}/> 1. Xuất Yến Thô</h3>
               
               <div>
-                <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block ml-1">Lấy từ lô thô nào?</label>
-                <select className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl p-3 font-bold text-gray-900 outline-none focus:border-blue-400" value={form.batch_id} onChange={e => setForm({...form, batch_id: e.target.value})}>
+                <label className="text-[10px] md:text-xs font-bold uppercase text-gray-500 mb-1 block ml-1">Lấy từ lô thô nào?</label>
+                <select className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-semibold text-gray-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all text-sm md:text-base" value={form.batch_id} onChange={e => setForm({...form, batch_id: e.target.value})}>
                   <option value="">-- Chọn lô thô --</option>
                   {batches.map(b => (
                      <option key={b.id} value={b.id}>
@@ -170,91 +172,96 @@ export default function ProductionPage() {
               </div>
 
               <div>
-                <label className="text-[10px] font-black uppercase text-blue-600 mb-1 block ml-1">Số Kg thô lấy ra làm</label>
-                <input type="number" step="0.001" placeholder="VD: 0.5 (Nửa ký)" className="w-full border-2 border-blue-100 bg-blue-50/50 rounded-xl p-4 font-black text-blue-800 text-lg outline-none focus:border-blue-400" value={form.rawWeight} onChange={e => setForm({...form, rawWeight: e.target.value})} />
+                <label className="text-[10px] md:text-xs font-bold uppercase text-blue-600 mb-1 block ml-1">Số Kg thô lấy ra làm</label>
+                <input type="number" step="0.001" placeholder="VD: 0.5 (Nửa ký)" className="w-full border border-blue-200 bg-blue-50/50 rounded-xl p-3 md:p-4 font-black text-blue-800 text-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" value={form.rawWeight} onChange={e => setForm({...form, rawWeight: e.target.value})} />
               </div>
            </div>
 
-           <div className="bg-white p-6 rounded-[30px] border border-gray-200 shadow-sm space-y-5">
-              <h3 className="font-black uppercase tracking-tighter text-gray-900 flex items-center gap-2 border-b pb-4"><Users className="text-orange-500" size={18}/> 2. Chi Phí Gia Công</h3>
+           {/* BƯỚC 2 */}
+           <div className="bg-white p-5 md:p-6 rounded-[24px] border border-gray-200 shadow-sm space-y-4 md:space-y-5">
+              <h3 className="font-bold uppercase text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3 text-sm md:text-base"><Users className="text-orange-500" size={18}/> 2. Chi Phí Gia Công</h3>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                  <div>
-                   <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block ml-1">Tiền công thợ nhặt</label>
-                   <input type="number" placeholder="VNĐ" className="w-full border-2 border-gray-100 rounded-xl p-3 font-bold text-gray-900 outline-none focus:border-orange-400" value={form.laborCost} onChange={e => setForm({...form, laborCost: e.target.value})} />
+                   <label className="text-[10px] md:text-xs font-bold uppercase text-gray-500 mb-1 block ml-1">Tiền công thợ nhặt</label>
+                   <input type="number" placeholder="VNĐ" className="w-full border border-gray-200 rounded-xl p-3 font-semibold text-gray-900 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all text-sm md:text-base" value={form.laborCost} onChange={e => setForm({...form, laborCost: e.target.value})} />
                  </div>
                  <div>
-                   <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block ml-1">Điện, Nước, Khấu hao</label>
-                   <input type="number" placeholder="VNĐ" className="w-full border-2 border-gray-100 rounded-xl p-3 font-bold text-gray-900 outline-none focus:border-orange-400" value={form.utilityCost} onChange={e => setForm({...form, utilityCost: e.target.value})} />
+                   <label className="text-[10px] md:text-xs font-bold uppercase text-gray-500 mb-1 block ml-1">Điện, Nước, Khấu hao</label>
+                   <input type="number" placeholder="VNĐ" className="w-full border border-gray-200 rounded-xl p-3 font-semibold text-gray-900 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all text-sm md:text-base" value={form.utilityCost} onChange={e => setForm({...form, utilityCost: e.target.value})} />
                  </div>
               </div>
            </div>
 
-           <div className="bg-emerald-50 p-6 rounded-[30px] border border-emerald-200 shadow-sm space-y-5 relative overflow-hidden">
-              <div className="absolute -right-4 -top-4 opacity-10 text-emerald-500"><Droplet size={100}/></div>
-              <h3 className="font-black uppercase tracking-tighter text-emerald-900 flex items-center gap-2 border-b border-emerald-200/50 pb-4 relative z-10"><Droplet className="text-emerald-500" size={18}/> 3. Thu Thành Phẩm</h3>
+           {/* BƯỚC 3 */}
+           <div className="bg-emerald-50 p-5 md:p-6 rounded-[24px] border border-emerald-200 shadow-sm space-y-4 md:space-y-5 relative overflow-hidden">
+              <div className="absolute -right-4 -top-4 opacity-10 text-emerald-500"><Droplet size={80}/></div>
+              <h3 className="font-bold uppercase text-emerald-900 flex items-center gap-2 border-b border-emerald-200/50 pb-3 relative z-10 text-sm md:text-base"><Droplet className="text-emerald-500" size={18}/> 3. Thu Thành Phẩm</h3>
               
               <div className="relative z-10">
-                <label className="text-[10px] font-black uppercase text-emerald-600 mb-1 block ml-1">Số Kg Tinh Chế thu được</label>
-                <input type="number" step="0.001" placeholder="VD: 0.35" className="w-full border-2 border-emerald-300 bg-white rounded-xl p-4 font-black text-emerald-800 text-lg outline-none focus:border-emerald-500 shadow-inner" value={form.refinedWeight} onChange={e => setForm({...form, refinedWeight: e.target.value})} />
+                <label className="text-[10px] md:text-xs font-bold uppercase text-emerald-700 mb-1 block ml-1">Số Kg Tinh Chế thu được</label>
+                <input type="number" step="0.001" placeholder="VD: 0.35" className="w-full border border-emerald-300 bg-white rounded-xl p-3 md:p-4 font-black text-emerald-800 text-lg outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all shadow-inner" value={form.refinedWeight} onChange={e => setForm({...form, refinedWeight: e.target.value})} />
               </div>
            </div>
         </div>
 
         {/* KHU VỰC KẾT QUẢ ĐỊNH GIÁ (CỘT PHẢI) */}
         <div className="lg:col-span-7 space-y-6">
-           <div className="bg-gray-900 p-8 rounded-[40px] shadow-2xl border border-gray-800 text-white relative">
-              <h2 className="text-xl font-black uppercase tracking-widest text-gray-400 mb-8 flex items-center gap-2"><DollarSign/> Báo Cáo Định Giá Thành Phẩm</h2>
+           <div className="bg-gray-900 p-6 md:p-8 rounded-[24px] md:rounded-[40px] shadow-2xl border border-gray-800 text-white relative">
+              <h2 className="text-lg md:text-xl font-black uppercase tracking-widest text-gray-400 mb-6 md:mb-8 flex items-center gap-2"><DollarSign/> Định Giá Thành Phẩm</h2>
               
-              <div className="grid grid-cols-2 gap-6 mb-8">
-                 <div className="bg-gray-800 p-4 rounded-3xl border border-gray-700">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Gốc yến thô bỏ ra</p>
-                    <p className="text-xl font-black">{calculations.totalRawCost.toLocaleString()}đ</p>
+              {/* KHỐI HAO HỤT MOBILE 2 CỘT */}
+              <div className="grid grid-cols-2 gap-3 md:gap-6 mb-6 md:mb-8">
+                 <div className="bg-gray-800 p-3 md:p-4 rounded-2xl md:rounded-3xl border border-gray-700 flex flex-col justify-center">
+                    <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Gốc yến thô</p>
+                    <p className="text-base md:text-xl font-black truncate">{calculations.totalRawCost.toLocaleString()}đ</p>
                  </div>
-                 <div className="bg-gray-800 p-4 rounded-3xl border border-gray-700 relative overflow-hidden">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Hao hụt tạp chất/lông</p>
-                    <p className={`text-xl font-black ${calculations.shrinkagePercent > 30 ? 'text-red-400' : 'text-orange-400'}`}>{calculations.shrinkagePercent.toFixed(1)}%</p>
-                    <span className="absolute bottom-2 right-4 text-[10px] text-gray-500 font-bold">{calculations.shrinkageKg.toFixed(3)}kg bay màu</span>
+                 <div className="bg-gray-800 p-3 md:p-4 rounded-2xl md:rounded-3xl border border-gray-700 relative overflow-hidden flex flex-col justify-center">
+                    <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Hao hụt lông/tạp chất</p>
+                    <p className={`text-base md:text-xl font-black ${calculations.shrinkagePercent > 30 ? 'text-red-400' : 'text-orange-400'}`}>{calculations.shrinkagePercent.toFixed(1)}%</p>
+                    <span className="absolute bottom-1 md:bottom-2 right-2 md:right-4 text-[8px] md:text-[10px] text-gray-500 font-bold">{calculations.shrinkageKg.toFixed(3)}kg bay màu</span>
                  </div>
               </div>
 
-              <div className="space-y-4 mb-8">
-                 <div className="flex justify-between items-end border-b border-gray-700 pb-4">
+              {/* BÁO CÁO GIÁ VỐN */}
+              <div className="space-y-4 mb-6 md:mb-8">
+                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-gray-700 pb-4 gap-2">
                     <div>
-                       <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest">Giá Vốn Mới (VNĐ / 1 KG Tinh Chế)</p>
-                       <p className="text-[10px] text-gray-500 italic mt-1">Đã gánh hao hụt + công thợ + điện nước</p>
+                       <p className="text-[10px] md:text-xs font-black uppercase text-blue-400 tracking-widest">Giá Vốn Mới (1 KG Tinh Chế)</p>
+                       <p className="text-[9px] md:text-[10px] text-gray-500 italic mt-0.5 md:mt-1">Đã gánh hao hụt + công thợ + điện nước</p>
                     </div>
-                    <p className="text-3xl font-black text-blue-400">{Math.round(calculations.newCostPerKg).toLocaleString()}đ</p>
+                    <p className="text-2xl md:text-3xl font-black text-blue-400">{Math.round(calculations.newCostPerKg).toLocaleString()}đ</p>
                  </div>
                  <div className="flex justify-between items-end pb-2">
-                    <p className="text-xs font-black uppercase text-gray-300">Giá vốn 1 Lạng (100g)</p>
-                    <p className="text-2xl font-black text-white">{Math.round(calculations.newCostPer100g).toLocaleString()}đ</p>
+                    <p className="text-[10px] md:text-xs font-black uppercase text-gray-300">Giá vốn 1 Lạng (100g)</p>
+                    <p className="text-xl md:text-2xl font-black text-white">{Math.round(calculations.newCostPer100g).toLocaleString()}đ</p>
                  </div>
               </div>
 
-              <div className="bg-gradient-to-r from-orange-500 to-red-500 p-6 rounded-3xl shadow-inner mt-8">
-                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-black uppercase tracking-widest text-sm flex items-center gap-2"><Target size={18}/> Mức Lời Kỳ Vọng (/100g)</h3>
-                    <input type="number" className="w-24 bg-white/20 border border-white/30 rounded-xl px-2 py-1 text-right font-black text-white outline-none" value={form.targetProfit100g} onChange={e => setForm({...form, targetProfit100g: e.target.value})}/>
+              {/* KHỐI ĐỊNH GIÁ BÁN (MÀU NỔI BẬT) */}
+              <div className="bg-gradient-to-r from-orange-500 to-red-500 p-5 md:p-6 rounded-[20px] md:rounded-[24px] shadow-inner mt-6 md:mt-8">
+                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                    <h3 className="font-black uppercase tracking-widest text-xs md:text-sm flex items-center gap-1.5"><Target size={16}/> Mức Lời Kỳ Vọng (/100g)</h3>
+                    <input type="number" className="w-full sm:w-28 bg-white/20 border border-white/30 rounded-xl px-3 py-2 text-left sm:text-right font-black text-white outline-none focus:bg-white/30 transition-colors" value={form.targetProfit100g} onChange={e => setForm({...form, targetProfit100g: e.target.value})}/>
                  </div>
-                 <div className="flex justify-between items-center border-t border-white/20 pt-4">
-                    <p className="font-black uppercase text-[11px] tracking-widest">Giá Bán Tối Thiểu<br/>(1 Lạng)</p>
-                    <p className="text-4xl font-black tracking-tighter drop-shadow-md">
+                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-t border-white/20 pt-4 gap-1">
+                    <p className="font-black uppercase text-[10px] md:text-[11px] tracking-widest text-orange-100">Giá Bán Tối Thiểu<br className="hidden sm:block"/>(1 Lạng)</p>
+                    <p className="text-3xl md:text-4xl font-black tracking-tighter drop-shadow-md">
                        {Math.round(calculations.minSellPrice100g).toLocaleString()}đ
                     </p>
                  </div>
-                 <p className="text-right text-[10px] mt-2 font-bold opacity-80">Bán 1Kg tinh chế thu về: {Math.round(calculations.minSellPriceKg).toLocaleString()}đ</p>
+                 <p className="text-left sm:text-right text-[9px] md:text-[10px] mt-2 font-bold opacity-90 text-orange-100">Bán 1Kg tinh chế thu về: {Math.round(calculations.minSellPriceKg).toLocaleString()}đ</p>
               </div>
            </div>
 
-           {/* NÚT CHỐT LƯU KHO */}
-           <div className="bg-blue-50 border border-blue-200 p-6 rounded-[30px] flex items-center justify-between gap-4 shadow-sm">
-              <div className="flex items-start gap-3">
-                 <Info className="text-blue-500 mt-1 shrink-0"/>
-                 <p className="text-xs font-bold text-blue-800 leading-relaxed">Khi bấm Chốt, hệ thống sẽ <b>trừ số yến thô</b> ở kho, và tạo một <b>Mã Lô Tinh Chế Mới</b> với giá vốn đã được cập nhật chính xác như trên.</p>
+           {/* NÚT CHỐT LƯU KHO (MOBILE CHUYỂN DỌC) */}
+           <div className="bg-blue-50 border border-blue-200 p-5 md:p-6 rounded-[24px] md:rounded-[30px] flex flex-col md:flex-row items-center justify-between gap-4 md:gap-5 shadow-sm">
+              <div className="flex items-start gap-2.5 w-full">
+                 <Info className="text-blue-500 mt-0.5 shrink-0" size={18}/>
+                 <p className="text-[11px] md:text-xs font-medium text-blue-800 leading-relaxed">Khi bấm Chốt, hệ thống sẽ <b>trừ số yến thô</b> ở kho, và tạo một <b>Mã Lô Tinh Chế Mới</b> với giá vốn đã được cập nhật.</p>
               </div>
-              <button onClick={handleFinalizeProduction} disabled={isProcessing} className="bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest px-8 py-5 rounded-2xl shadow-lg shadow-blue-500/40 transition-all flex items-center gap-2 shrink-0 disabled:opacity-50">
-                 {isProcessing ? 'Đang xử lý...' : 'Chốt Lô Tinh Chế'} <ArrowRight size={18}/>
+              <button onClick={handleFinalizeProduction} disabled={isProcessing} className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest px-6 py-4 rounded-xl md:rounded-2xl shadow-md transition-all flex justify-center items-center gap-2 shrink-0 disabled:opacity-50 text-xs md:text-sm">
+                 {isProcessing ? 'Đang xử lý...' : 'Chốt Lô Tinh Chế'} <ArrowRight size={16}/>
               </button>
            </div>
 
