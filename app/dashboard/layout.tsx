@@ -53,7 +53,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const menuItems = [
     { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Kho & Lô Hàng', href: '/dashboard/inventory', icon: Package },
-    { name: 'Sổ Trạm Yến', href: '/dashboard/suppliers', icon: Factory }, // ĐÃ BỔ SUNG SỔ TRẠM YẾN
+    { name: 'Sổ Trạm Yến', href: '/dashboard/suppliers', icon: Factory },
     { name: 'Sổ Gia Công', href: '/dashboard/production', icon: Calculator }, 
     { name: 'Bản đồ khách', href: '/dashboard/map', icon: Map },
     { name: 'Đơn hàng', href: '/dashboard/orders', icon: ShoppingCart },
@@ -77,7 +77,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* THANH TOP BAR DÀNH RIÊNG CHO MOBILE */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-gray-900 text-white z-40 flex items-center justify-between px-6 shadow-md">
          <div className="font-black tracking-tighter text-xl">ĐOÀN QUYÊN <span className="text-blue-500 text-sm">®</span></div>
-         <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 -mr-2 text-gray-300 hover:text-white">
+         <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 -mr-2 text-gray-300 hover:text-white transition-colors">
             <Menu size={28} />
          </button>
       </div>
@@ -98,11 +98,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               ĐOÀN QUYÊN <span className="text-blue-500 text-xs">®</span>
             </Link>
             <p className="text-[10px] text-gray-500 font-bold uppercase mt-1 tracking-widest leading-tight">
-              Hệ thống Yến Sào <br/>
+              Hệ thống Yến Sào
             </p>
           </div>
           {/* Nút đóng Menu chữ X trên Mobile */}
-          <button className="md:hidden text-gray-400 hover:text-white bg-white/10 p-2 rounded-full" onClick={() => setIsMobileMenuOpen(false)}>
+          <button className="md:hidden text-gray-400 hover:text-white bg-white/10 p-2 rounded-full transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
              <X size={18}/>
           </button>
         </div>
