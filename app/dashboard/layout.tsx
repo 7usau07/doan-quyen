@@ -66,7 +66,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
       <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center text-white">
          <ShieldCheck size={48} className="text-blue-500 animate-pulse mb-4"/>
-         <h2 className="font-black text-xl tracking-widest uppercase">Đang quét mã bảo mật DD PRIME...</h2>
+         <h2 className="font-black text-xl tracking-widest uppercase">Đang quét mã bảo mật ĐOÀN QUYÊN...</h2>
       </div>
     )
   }
