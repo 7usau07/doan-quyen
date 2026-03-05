@@ -87,7 +87,7 @@ export default function LoginPage() {
         </form>
 
         <p className="text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-8">
-          Hệ thống được bảo mật bởi Supabase
+          Hệ thống được bảo mật ĐÔNG DUY
         </p>
       </div>
     </div>
