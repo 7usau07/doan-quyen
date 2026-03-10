@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Bot, Send, Brain, Sparkles, AlertTriangle, Lightbulb, Save, Trash2, Mic, ImagePlus, X, Database, TrendingUp, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'
 
-const API_KEY = 'AIzaSyBTiEdn1TAVSjZIwFBCagYB5vLXH9or7t8';
+const API_KEY = 'AIzaSyC-WVVBANw5BPY10LbXIrFxzLFD1d9tNoU';
 
 const formatAIResponse = (text: string) => {
   if (!text) return '';
