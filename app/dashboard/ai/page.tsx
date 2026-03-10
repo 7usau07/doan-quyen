@@ -300,7 +300,7 @@ export default function AIPage() {
                 <p className="text-[10px] text-gray-400">Làm sạch chuẩn</p>
               </div>
               <div className="flex flex-col items-end">
-                 <span className="text-sm font-black text-blue-600 flex items-center gap-1">10.0tr - 11.5tr <Minus size={14} className="text-gray-400"/></span>
+                 <span className="text-sm font-black text-blue-600 flex items-center gap-1">2.0tr - 3.5tr <Minus size={14} className="text-gray-400"/></span>
               </div>
             </div>
 
@@ -320,7 +320,7 @@ export default function AIPage() {
                 <p className="text-[10px] text-gray-400">Hàng dạt, vỡ</p>
               </div>
               <div className="flex flex-col items-end">
-                 <span className="text-sm font-black text-blue-600 flex items-center gap-1">4.5tr - 5.5tr <ArrowDownRight size={14} className="text-emerald-500"/></span>
+                 <span className="text-sm font-black text-blue-600 flex items-center gap-1">4.5tr - 11.5tr <ArrowDownRight size={14} className="text-emerald-500"/></span>
               </div>
             </div>
           </div>
