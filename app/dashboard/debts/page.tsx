@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { db } from '@/lib/db'
+import { db } from '@/lib/db' // Thằng quản lý Két phụ Offline
 import { 
   Landmark, Users, HandCoins, History, X, PlusCircle, 
   Wallet, CheckCircle2, AlertCircle, CalendarClock, ArrowRightLeft,
@@ -12,21 +12,25 @@ export default function DebtsPage() {
   const [debts, setDebts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   
+  // Modals
   const [showAddForm, setShowAddForm] = useState(false)
   const [selectedPerson, setSelectedPerson] = useState<any>(null) 
   const [paymentModal, setPaymentModal] = useState<any>(null) 
   const [editingDebt, setEditingDebt] = useState<any>(null) 
 
+  // Form tạo mới
   const [form, setForm] = useState({
     target_name: '', debt_type: 'vay_vao', item_type: 'tien',
     total_amount: '', interest_day: '', interest_amount: '', note: '', start_date: new Date().toISOString().split('T')[0]
   })
 
+  // Form sửa
   const [editForm, setEditForm] = useState({
     target_name: '', debt_type: 'vay_vao', item_type: 'tien',
     total_amount: '', interest_day: '', interest_amount: '', note: '', start_date: ''
   })
 
+  // Form ghi chép
   const [payForm, setPayForm] = useState({
     amount: '', transaction_type: 'tra_goc', transaction_date: new Date().toISOString().split('T')[0], note: ''
   })
@@ -40,6 +44,7 @@ export default function DebtsPage() {
 
   useEffect(() => { fetchDebts() }, [])
 
+  // THUẬT TOÁN GỘP CÔNG NỢ (SIÊU SẠCH)
   const groupedDebts = useMemo(() => {
     const groups: Record<string, any> = {}
     
@@ -69,12 +74,15 @@ export default function DebtsPage() {
     return Object.values(groups).sort((a, b) => b.totalRemaining - a.totalRemaining)
   }, [debts])
 
+  // ==========================================
+  // 1. TẠO KHOẢN NỢ MỚI (HỖ TRỢ OFFLINE 100%)
+  // ==========================================
   const handleAddDebt = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     const amount = Number(form.total_amount)
     
-    const { data, error } = await supabase.from('debts').insert([{
+    const newDebtData = {
       target_name: form.target_name.trim(),
       debt_type: form.debt_type,
       item_type: form.item_type,
@@ -84,17 +92,21 @@ export default function DebtsPage() {
       interest_amount: form.interest_amount ? Number(form.interest_amount) : 0,
       note: form.note,
       created_at: form.start_date ? new Date(form.start_date).toISOString() : new Date().toISOString()
-    }]).select()
+    }
+
+    // Đưa cho thằng quản lý db xử lý (Mất mạng nó tự cất vô Két Phụ)
+    const { data, error, isOffline } = await db.insert('debts', newDebtData)
 
     if (error) {
       alert("Lỗi khi ghi nợ: " + error.message)
-      setLoading(false)
-      return
-    }
-
-    if (data && data.length > 0) {
-      const newRecord = { ...data[0], debt_transactions: [] }
+    } else {
+      // Ép màn hình nhảy số tức thì
+      const newRecord = { ...(data ? data[0] : newDebtData), debt_transactions: [], id: Date.now() }
       setDebts(prev => [newRecord, ...prev]) 
+      
+      if (isOffline) {
+        alert("⚠️ Đang mất mạng! Đã cất tạm vào điện thoại. Có 4G sẽ tự đẩy lên Két Sắt!");
+      }
     }
 
     setForm({ target_name: '', debt_type: 'vay_vao', item_type: 'tien', total_amount: '', interest_day: '', interest_amount: '', note: '', start_date: new Date().toISOString().split('T')[0] })
@@ -102,6 +114,9 @@ export default function DebtsPage() {
     setLoading(false)
   }
 
+  // ==========================================
+  // 2. SỬA KHOẢN NỢ (CHỈ CHO PHÉP KHI CÓ MẠNG)
+  // ==========================================
   const openEditModal = (d: any) => {
     setEditingDebt(d);
     setEditForm({
@@ -116,6 +131,11 @@ export default function DebtsPage() {
 
   const handleUpdateDebt = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!navigator.onLine) {
+      alert("🛑 BẢO VỆ TÀI SẢN: Vui lòng bật 4G/Wifi để sửa thông tin nợ!");
+      return;
+    }
+
     setLoading(true);
     const newTotal = Number(editForm.total_amount);
     const diff = newTotal - Number(editingDebt.total_amount);
@@ -144,7 +164,15 @@ export default function DebtsPage() {
     setLoading(false);
   }
 
+  // ==========================================
+  // 3. XÓA KHOẢN NỢ (CHỈ CHO PHÉP KHI CÓ MẠNG)
+  // ==========================================
   const handleDeleteDebt = async (id: string) => {
+    if (!navigator.onLine) {
+      alert("🛑 BẢO VỆ TÀI SẢN: Vui lòng bật 4G/Wifi để xóa nợ!");
+      return;
+    }
+
     if (confirm("Sếp Duy chắc chắn muốn xóa hẳn món nợ này? Mất luôn lịch sử trả nợ đấy!")) {
       setLoading(true);
       const { error } = await supabase.from('debts').delete().eq('id', id);
@@ -156,8 +184,16 @@ export default function DebtsPage() {
     }
   }
 
+  // ==========================================
+  // 4. TRẢ NỢ / ĐÓNG LÃI (CHỈ CHO PHÉP KHI CÓ MẠNG)
+  // ==========================================
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!navigator.onLine) {
+      alert("🛑 BẢO VỆ TÀI SẢN: Vui lòng bật 4G/Wifi để trừ nợ chính xác nhất!");
+      return;
+    }
+
     setLoading(true)
     const payAmount = Number(payForm.amount)
     
@@ -219,14 +255,14 @@ export default function DebtsPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-gray-900 text-white p-6 md:p-8 rounded-[24px] md:rounded-[40px] shadow-xl gap-4">
         <div>
           <h1 className="text-xl md:text-3xl font-black uppercase tracking-tight flex items-center gap-2"><Landmark size={24} className="text-blue-400"/> Quản lý Công Nợ</h1>
-          <p className="text-gray-400 font-medium text-[10px] md:text-xs uppercase tracking-widest mt-1">Gộp nhóm thông minh • Hiển thị tức thời</p>
+          <p className="text-gray-400 font-medium text-[10px] md:text-xs uppercase tracking-widest mt-1">Gộp nhóm thông minh • Có hỗ trợ Mất Mạng</p>
         </div>
         <button onClick={() => setShowAddForm(!showAddForm)} className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 px-5 py-3 rounded-xl font-black shadow-md uppercase text-[10px] md:text-xs flex justify-center items-center gap-2 transition-all">
           {showAddForm ? 'Đóng Form' : <><PlusCircle size={16}/> Thêm Khoản Vay</>}
         </button>
       </div>
 
-      {/* FORM THÊM NỢ (ĐÃ PHỤC HỒI NHẮC LÃI + GHI CHÚ) */}
+      {/* FORM THÊM NỢ (FULL LÃI SUẤT VÀ GHI CHÚ) */}
       {showAddForm && (
         <form onSubmit={handleAddDebt} className="bg-white p-6 md:p-8 rounded-[24px] md:rounded-[30px] border border-gray-200 shadow-sm space-y-5 animate-in slide-in-from-top-2">
            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -259,7 +295,6 @@ export default function DebtsPage() {
               </div>
            </div>
 
-           {/* --- HÀNG LÃI SUẤT ĐÃ ĐƯỢC PHỤC HỒI --- */}
            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-100">
               <div>
                  <label className="text-[10px] font-black uppercase text-gray-500 ml-1">Ngày đóng lãi (1-31)</label>

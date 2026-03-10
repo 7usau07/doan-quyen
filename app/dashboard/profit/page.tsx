@@ -18,7 +18,7 @@ export default function ProfitPage() {
 
   // STATE BẬT TẮT LỊCH SỬ HOA HỒNG SẾP DUY & QUYÊN
   const [showDuyHistory, setShowDuyHistory] = useState(false)
-  const [showQuyenHistory, setShowQuyenHistory] = useState(false) // ĐÃ THÊM STATE CHO QUYÊN
+  const [showQuyenHistory, setShowQuyenHistory] = useState(false)
 
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [expenseForm, setExpenseForm] = useState({
@@ -114,6 +114,7 @@ export default function ProfitPage() {
     return { filteredOrders: fOrders, filteredExpenses: fExpenses }
   }, [orders, expenses, filterType, filterYear, filterMonth])
 
+  // --- THUẬT TOÁN TÍNH TOÁN DÒNG TIỀN MỚI ---
   const stats = useMemo(() => {
     const totalRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.revenue || 0), 0)
     const totalCOGS = filteredOrders.reduce((sum, o) => sum + Number(o.cost || 0), 0)
@@ -127,14 +128,17 @@ export default function ProfitPage() {
 
     const totalOutsideExpenses = filteredExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0)
     
-    // Tổng lợi nhuận chung của Cả Xưởng (Vẫn trừ thuế bình thường)
-    const totalAllCosts = totalCOGS + totalTax + totalShip + totalLossCost + totalOutsideExpenses
-    const netProfit = totalRevenue - totalAllCosts
+    // 1. LỢI NHUẬN TRƯỚC THUẾ (LÃI GỘP): Bán hàng lời bao nhiêu
+    const profitBeforeTax = totalRevenue - totalCOGS - totalShip - totalLossCost;
+    
+    // 2. LỢI NHUẬN TỔNG RÒNG: Cục Lãi Gộp đem đi đóng thuế và trừ chi phí lặt vặt (Tiền đút túi)
+    const netProfit = profitBeforeTax - totalTax - totalOutsideExpenses;
+    
     const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0.0'
 
     // LẤY DANH SÁCH VÀ TÍNH TIỀN CHO 2 KÉT SẮT
     const duyOrders = filteredOrders.filter(o => o.seller === 'Duy').sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    const quyenOrders = filteredOrders.filter(o => o.seller !== 'Duy').sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()); // ĐÃ XUẤT QUYÊN ORDERS
+    const quyenOrders = filteredOrders.filter(o => o.seller !== 'Duy').sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     
     const totalDuyProfitRaw = duyOrders.reduce((sum, o) => {
         const lossCost = Number(o.weight) > 0 ? (Number(o.weight_loss || 0) * (Number(o.cost) / Number(o.weight))) : 0;
@@ -150,6 +154,7 @@ export default function ProfitPage() {
 
     const finalDuyPocketMoney = totalDuyProfitRaw * (10 / 15);
 
+    // DỮ LIỆU BIỂU ĐỒ
     const isMonthView = filterType === 'month'
     const chartDataMap: Record<string, any> = {}
     
@@ -162,6 +167,7 @@ export default function ProfitPage() {
       
       const costPerKg = Number(o.weight) > 0 ? (Number(o.cost) / Number(o.weight)) : 0;
       const loss = Number(o.weight_loss || 0) * costPerKg;
+      // Trong biểu đồ vẫn hiển thị Lợi nhuận ròng
       chartDataMap[key].gross += (Number(o.revenue || 0) - Number(o.cost || 0) - Number(o.tax_amount || 0) - Number(o.shipping_fee || 0) - loss)
       chartDataMap[key].Loi_nhuan_rong = chartDataMap[key].gross
     })
@@ -190,9 +196,9 @@ export default function ProfitPage() {
 
     return { 
         totalRevenue, totalCOGS, totalTax, totalShip, totalLossCost, 
-        totalOutsideExpenses, totalAllCosts, netProfit, profitMargin, 
+        totalOutsideExpenses, profitBeforeTax, netProfit, profitMargin, 
         chartData, 
-        duyOrders, quyenOrders, // Đã xuất thêm mảng đơn của Quyên
+        duyOrders, quyenOrders,
         totalDuyProfitRaw, totalQuyenProfitRaw, finalDuyPocketMoney
     }
   }, [filteredOrders, filteredExpenses, filterType])
@@ -250,20 +256,20 @@ export default function ProfitPage() {
         </form>
       )}
 
-      {/* --- CỤM KÉT SẮT CHIA TIỀN MỚI --- */}
+      {/* --- CỤM KÉT SẮT TÁCH BẠCH RÕ RÀNG TRƯỚC/SAU THUẾ --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
-        {/* KÉT SẮT TỔNG */}
+        {/* KÉT 1: LỢI NHUẬN TRƯỚC THUẾ (LÃI GỘP) */}
         <div className="bg-white p-6 rounded-[30px] border border-gray-100 shadow-sm relative overflow-hidden group col-span-1">
            <div className="absolute -right-4 -top-4 text-gray-50 opacity-50 group-hover:scale-110 transition-transform"><Wallet size={100}/></div>
-           <p className="text-xs font-black uppercase text-gray-400 tracking-widest mb-2 relative z-10">Lợi Nhuận Gộp Toàn Xưởng</p>
-           <h2 className="text-3xl lg:text-4xl font-black text-gray-900 truncate relative z-10" title={stats.netProfit.toLocaleString() + 'đ'}>
-              {formatCompactNumber(stats.netProfit)}
+           <p className="text-xs font-black uppercase text-gray-400 tracking-widest mb-2 relative z-10">Lợi Nhuận Gộp (Trước Thuế)</p>
+           <h2 className="text-3xl lg:text-4xl font-black text-gray-900 truncate relative z-10" title={stats.profitBeforeTax.toLocaleString() + 'đ'}>
+              {formatCompactNumber(stats.profitBeforeTax)}
            </h2>
-           <p className="text-[10px] text-gray-400 mt-2 font-bold relative z-10 uppercase">(Đã trừ vốn, ship, thuế, hao hụt)</p>
+           <p className="text-[10px] text-gray-400 mt-2 font-bold relative z-10 uppercase">(Chưa trừ Thuế và Sổ chi)</p>
         </div>
 
-        {/* QUỸ CỦA VỢ (QUYÊN) - ĐÃ BỔ SUNG NÚT BẤM XEM */}
+        {/* KÉT 2: QUỸ CỦA VỢ (QUYÊN) */}
         <div onClick={() => setShowQuyenHistory(true)} className="bg-gradient-to-br from-pink-400 to-pink-600 p-6 rounded-[30px] shadow-lg text-white relative overflow-hidden group cursor-pointer hover:opacity-95 transition-opacity border-2 border-pink-300">
            <div className="absolute -right-4 -top-4 text-pink-300 opacity-30 group-hover:scale-110 transition-transform"><Heart size={100}/></div>
            <p className="text-xs font-black uppercase text-pink-100 tracking-widest mb-2 relative z-10 flex items-center gap-1">Quỹ Doanh Thu Quyên Bán <span className="bg-white text-pink-600 px-1.5 py-0.5 rounded text-[8px] ml-1">BẤM XEM ĐƠN</span></p>
@@ -275,15 +281,15 @@ export default function ProfitPage() {
            </p>
         </div>
 
-        {/* QUỸ CỦA CHỒNG (SẾP DUY) */}
+        {/* KÉT 3: QUỸ CỦA CHỒNG (SẾP DUY) */}
         <div onClick={() => setShowDuyHistory(true)} className="bg-gradient-to-br from-orange-400 to-orange-600 p-6 rounded-[30px] shadow-lg text-white relative overflow-hidden group border-2 border-orange-300 cursor-pointer hover:opacity-95 transition-opacity">
            <div className="absolute -right-4 -top-4 text-orange-300 opacity-30 group-hover:scale-110 transition-transform"><UserCheck size={100}/></div>
            <p className="text-xs font-black uppercase text-orange-100 tracking-widest mb-2 relative z-10 flex items-center gap-1">Tiền Lãi Bỏ Túi Duy (66.67%) <span className="bg-white text-orange-600 px-1.5 py-0.5 rounded text-[8px] ml-1">BẤM XEM ĐƠN</span></p>
            <h2 className="text-3xl lg:text-4xl font-black truncate relative z-10" title={stats.finalDuyPocketMoney.toLocaleString() + 'đ'}>
               +{formatCompactNumber(Math.round(stats.finalDuyPocketMoney))}
            </h2>
-           <p className="text-[10px] text-orange-100 mt-2 font-bold relative z-10 uppercase bg-orange-800/20 inline-block px-2 py-1 rounded">
-               Lãi thực bán: {stats.totalDuyProfitRaw.toLocaleString()}đ (Đã ôm Thuế)
+           <p className="text-[10px] text-orange-100 mt-2 font-bold relative z-10 uppercase bg-orange-800/20 inline-block px-2 py-1 rounded truncate">
+               Lãi Ròng Cả Xưởng: {stats.netProfit.toLocaleString()}đ (Đã Thuế)
            </p>
         </div>
 
@@ -337,7 +343,7 @@ export default function ProfitPage() {
         </div>
       )}
 
-      {/* --- MODAL LỊCH SỬ BÁN HÀNG CỦA QUYÊN (MỚI THÊM) --- */}
+      {/* MODAL LỊCH SỬ BÁN HÀNG CỦA QUYÊN */}
       {showQuyenHistory && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[30px] p-6 md:p-8 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl relative">
@@ -455,7 +461,7 @@ export default function ProfitPage() {
                          </div>
                       </div>
                       <div className="flex justify-between items-center border-t border-gray-700 pt-4 mt-2">
-                         <div className="flex items-center gap-3"><span className="w-4 h-4 rounded-full bg-emerald-500"></span> <span className="text-sm font-black text-white uppercase tracking-widest">Lợi Nhuận Gộp</span></div>
+                         <div className="flex items-center gap-3"><span className="w-4 h-4 rounded-full bg-emerald-500"></span> <span className="text-sm font-black text-white uppercase tracking-widest">Lợi Nhuận Ròng</span></div>
                          <span className="font-black text-emerald-400 text-xl">{((stats.netProfit/stats.totalRevenue)*100).toFixed(1)}%</span>
                       </div>
                    </div>
