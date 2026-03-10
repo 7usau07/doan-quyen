@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Bot, Send, Brain, Sparkles, AlertTriangle, Lightbulb, Save, Trash2, Mic, ImagePlus, X, Database, TrendingUp, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'
 
-const API_KEY = 'AIzaSyC-WVVBANw5BPY10LbXIrFxzLFD1d9tNoU';
+// ĐÃ CHỈNH SANG LẤY TỪ KÉT SẮT .env.local - CẤM SẾP DÁN CHÌA CỨNG VÀO ĐÂY NỮA NHÉ!
+const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 
 const formatAIResponse = (text: string) => {
   if (!text) return '';
@@ -56,10 +57,13 @@ export default function AIPage() {
 
       context += `- Tổng doanh thu: ${totalRev.toLocaleString()} VNĐ.\n`;
       context += `- Tổng giá vốn (chi phí nhập/sản xuất): ${totalCost.toLocaleString()} VNĐ.\n`;
-      context += `- Tổng lợi nhuận trước thuế: ${totalProfit.toLocaleString()} VNĐ.\n`;
+      context += `- Tổng lợi nhuận ròng: ${totalProfit.toLocaleString()} VNĐ.\n`;
       
+      // BỘ ĐẾM KÝ TỒN KHO CỰC CHUẨN NHƯ MÀN HÌNH TỔNG QUAN
+      const totalInventoryKg = invRes.data?.reduce((sum, item) => sum + Number(item.khoi_luong || item.weight || item.so_luong || item.kg || 0), 0) || 0;
       const totalInventoryItems = invRes.data?.length || 0;
-      context += `- Tình trạng kho: Đang có ${totalInventoryItems} lô hàng tồn kho.\n`;
+      
+      context += `- Tình trạng kho: Đang tồn tổng cộng ${totalInventoryKg.toFixed(3)} kg yến (chi tiết gồm ${totalInventoryItems} lô hàng).\n`;
 
       setBusinessContext(context);
     } catch (err) {
@@ -96,6 +100,12 @@ export default function AIPage() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!input.trim() && !imageBase64) || loading) return;
+
+    // CHẶN NGAY TỪ CỬA NẾU SERVER CHƯA ĐƯỢC RESET
+    if (!API_KEY) {
+       setMessages(prev => [...prev, { role: 'model', content: `❌ Sếp chưa Tắt/Mở lại server (npm run dev) sau khi sửa file .env.local!` }]);
+       return;
+    }
 
     const userMsg = input.trim();
     const currentImage = imageBase64;
@@ -244,7 +254,7 @@ export default function AIPage() {
            <div className="absolute -right-4 -top-4 text-emerald-200 opacity-50"><Sparkles size={100}/></div>
            <h3 className="text-sm font-black uppercase flex items-center gap-2 mb-2 relative z-10"><AlertTriangle size={18}/> Móc Két Sắt Khảo Sát</h3>
            <p className="text-xs font-bold opacity-80 mb-4 relative z-10">AI đã đọc toàn bộ dữ liệu. Thử bấm 1 câu hỏi để test:</p>
-           <button onClick={() => setInput('Dựa vào dữ liệu hệ thống, hãy tóm tắt tình hình doanh thu, chi phí và số lượng khách hàng hiện tại cho tôi.')} className="w-full text-left bg-white/60 hover:bg-white px-4 py-3 rounded-2xl text-xs font-bold transition-colors relative z-10 border border-emerald-100 shadow-sm">
+           <button onClick={() => setInput('Dựa vào dữ liệu hệ thống, hãy báo cáo tình hình TỒN KHO BAO NHIÊU KÝ và doanh thu hiện tại cho tôi.')} className="w-full text-left bg-white/60 hover:bg-white px-4 py-3 rounded-2xl text-xs font-bold transition-colors relative z-10 border border-emerald-100 shadow-sm">
              👉 Báo cáo tình hình làm ăn xưởng
            </button>
         </div>
@@ -274,8 +284,6 @@ export default function AIPage() {
           </h3>
           
           <div className="space-y-4">
-            {/* SẾP MUỐN ĐỔI GIÁ THÌ SỬA Ở CHỖ MẤY CÁI DÒNG DƯỚI NÀY NÈ: */}
-            
             <div className="flex justify-between items-center group">
               <div>
                 <p className="text-xs font-bold text-gray-800">Yến Xô (Thô)</p>
@@ -292,7 +300,7 @@ export default function AIPage() {
                 <p className="text-[10px] text-gray-400">Làm sạch chuẩn</p>
               </div>
               <div className="flex flex-col items-end">
-                 <span className="text-sm font-black text-blue-600 flex items-center gap-1">2.0tr - 3.5tr <Minus size={14} className="text-gray-400"/></span>
+                 <span className="text-sm font-black text-blue-600 flex items-center gap-1">10.0tr - 11.5tr <Minus size={14} className="text-gray-400"/></span>
               </div>
             </div>
 
@@ -312,11 +320,9 @@ export default function AIPage() {
                 <p className="text-[10px] text-gray-400">Hàng dạt, vỡ</p>
               </div>
               <div className="flex flex-col items-end">
-                 <span className="text-sm font-black text-blue-600 flex items-center gap-1">4.5tr - 11.5tr <ArrowDownRight size={14} className="text-emerald-500"/></span>
+                 <span className="text-sm font-black text-blue-600 flex items-center gap-1">4.5tr - 5.5tr <ArrowDownRight size={14} className="text-emerald-500"/></span>
               </div>
             </div>
-            
-            {/* KẾT THÚC CHỖ SỬA GIÁ */}
           </div>
 
           <button onClick={() => setInput('Dựa vào bảng giá hiện tại (Xô 7-9tr, Đẹp 12-13.5tr), hãy tư vấn cho tôi chiến lược bán hàng để tối ưu lợi nhuận nhất trong tháng này.')} className="w-full mt-6 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-bold py-3 rounded-2xl transition-colors flex items-center justify-center gap-2">
