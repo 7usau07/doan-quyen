@@ -30,7 +30,7 @@ const readNumberToText = (number: number) => {
   }
   let str = ''
   let groupIndex = 0
-  let tempNumber = number
+  let tempNumber = Math.round(number) // Làm tròn trước khi đọc chữ
   while (tempNumber > 0) {
       const group = tempNumber % 1000
       tempNumber = Math.floor(tempNumber / 1000)
@@ -237,8 +237,8 @@ export default function OrdersPage() {
       "Mã Lô Xuất": o.batches?.batch_code || '', "Phân loại hàng": o.grade_type || 'Xô',
       "Độ ẩm (%)": o.moisture_level || 0,
       "Số Kg Yến": Number(o.weight).toFixed(3), "Hao hụt (Kg)": Number(o.weight_loss || 0).toFixed(3),
-      "Doanh thu món": Number(o.revenue).toLocaleString('vi-VN'), "Thuế 5%": Number(o.tax_amount || 0).toLocaleString('vi-VN'),
-      "Phí Ship": Number(o.shipping_fee || 0).toLocaleString('vi-VN'), "Lợi Nhuận Ròng": Number(o.profit).toLocaleString('vi-VN'),
+      "Doanh thu món": Math.round(Number(o.revenue)).toLocaleString('vi-VN'), "Thuế 5%": Math.round(Number(o.tax_amount || 0)).toLocaleString('vi-VN'),
+      "Phí Ship": Math.round(Number(o.shipping_fee || 0)).toLocaleString('vi-VN'), "Lợi Nhuận Ròng": Math.round(Number(o.profit)).toLocaleString('vi-VN'),
       "Người bán": o.seller || 'Quyên', "Trạng thái": o.status, "Ghi chú": o.note || ''
     }))
     const worksheet = XLSX.utils.json_to_sheet(exportData)
@@ -365,7 +365,8 @@ export default function OrdersPage() {
                         <div className="flex justify-between items-end mb-3 px-1">
                            <div className="text-xs text-gray-600 font-medium">Bán: <b className="text-gray-900">{Number(item.weight).toFixed(3)} kg</b></div>
                            <div className="text-right">
-                              <p className="font-black text-blue-600 text-sm md:text-base leading-none">{Number(item.revenue).toLocaleString('vi-VN')}đ</p>
+                              {/* ĐÃ LÀM TRÒN SỐ TIỀN MÓN */}
+                              <p className="font-black text-blue-600 text-sm md:text-base leading-none">{Math.round(Number(item.revenue)).toLocaleString('vi-VN')}đ</p>
                            </div>
                         </div>
 
@@ -389,18 +390,22 @@ export default function OrdersPage() {
                </div>
             </div>
 
-            {/* TỔNG KẾT TÀI CHÍNH */}
+            {/* TỔNG KẾT TÀI CHÍNH (ĐÃ FIX LỖI +-) */}
             <div className="bg-white p-4 md:p-6 border-t border-gray-100 flex flex-col gap-2 mt-1">
                <div className="flex flex-wrap justify-between gap-2 border-b border-dashed border-gray-100 pb-2">
-                  <div className="text-[10px] md:text-[11px] text-gray-500 font-medium">Thuế: <b className="text-gray-700">-{group.totalTax.toLocaleString('vi-VN')}đ</b></div>
-                  <div className="text-[10px] md:text-[11px] text-gray-500 font-medium">Ship: <b className="text-gray-700">-{group.totalShip.toLocaleString('vi-VN')}đ</b></div>
-                  {group.totalLossMoney > 0 && <div className="text-[10px] md:text-[11px] text-red-500 font-medium">Lỗ hụt: <b className="text-red-600">-{group.totalLossMoney.toLocaleString('vi-VN')}đ</b></div>}
+                  <div className="text-[10px] md:text-[11px] text-gray-500 font-medium">Thuế: <b className="text-gray-700">-{Math.round(group.totalTax).toLocaleString('vi-VN')}đ</b></div>
+                  <div className="text-[10px] md:text-[11px] text-gray-500 font-medium">Ship: <b className="text-gray-700">-{Math.round(group.totalShip).toLocaleString('vi-VN')}đ</b></div>
+                  {group.totalLossMoney > 0 && <div className="text-[10px] md:text-[11px] text-red-500 font-medium">Lỗ hụt: <b className="text-red-600">-{Math.round(group.totalLossMoney).toLocaleString('vi-VN')}đ</b></div>}
                </div>
                <div className="flex justify-between items-end pt-1">
                   <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Khách trả</p>
                   <div className="text-right">
-                     <p className="text-xl md:text-2xl font-black text-gray-900 leading-none mb-1.5">{group.totalRevenue.toLocaleString('vi-VN')}đ</p>
-                     <p className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 inline-block">Lãi: +{group.totalProfit.toLocaleString('vi-VN')}đ</p>
+                     <p className="text-xl md:text-2xl font-black text-gray-900 leading-none mb-1.5">{Math.round(group.totalRevenue).toLocaleString('vi-VN')}đ</p>
+                     
+                     {/* FIX LOGIC LÃI / LỖ THÔNG MINH */}
+                     <p className={`text-[9px] font-bold px-2 py-0.5 rounded border inline-block ${group.totalProfit >= 0 ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-red-600 bg-red-50 border-red-100'}`}>
+                         {group.totalProfit >= 0 ? 'Lãi: +' : 'Lỗ: -'}{Math.abs(Math.round(group.totalProfit)).toLocaleString('vi-VN')}đ
+                     </p>
                   </div>
                </div>
             </div>
@@ -481,7 +486,7 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* --- MODAL HÓA ĐƠN PDF CHUẨN CÔNG TY TNHH --- */}
+      {/* --- MODAL HÓA ĐƠN PDF CHUẨN CÔNG TY TNHH (ĐÃ LÀM TRÒN SỐ TIỀN) --- */}
       {selectedInvoice && (
         <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm no-print">
           <div className="bg-white w-full max-w-3xl max-h-[95vh] overflow-y-auto rounded-[20px] shadow-2xl relative flex flex-col">
@@ -564,7 +569,7 @@ export default function OrdersPage() {
                               <td className="py-3 px-2 text-center text-gray-600 uppercase text-[10px] font-semibold">{item.grade_type || 'Xô'}</td>
                               <td className="py-3 px-2 text-right font-semibold text-gray-800">{Number(item.weight).toFixed(3)} kg</td>
                               <td className="py-3 px-2 text-right text-gray-600">{Math.round(unitPrice).toLocaleString('vi-VN')}</td>
-                              <td className="py-3 px-2 text-right font-bold text-gray-900">{Number(item.revenue).toLocaleString('vi-VN')}</td>
+                              <td className="py-3 px-2 text-right font-bold text-gray-900">{Math.round(Number(item.revenue)).toLocaleString('vi-VN')}</td>
                             </tr>
                           )
                       })}
@@ -578,14 +583,14 @@ export default function OrdersPage() {
                       {/* Tiền hàng chưa tính phí */}
                       <div className="flex justify-between border-b border-dashed border-gray-200 pb-2">
                          <span className="font-semibold">Cộng tiền hàng hóa:</span>
-                         <span className="font-bold">{Number(selectedInvoice.totalRevenue - selectedInvoice.totalTax - selectedInvoice.totalShip).toLocaleString('vi-VN')} đ</span>
+                         <span className="font-bold">{Math.round(Number(selectedInvoice.totalRevenue - selectedInvoice.totalTax - selectedInvoice.totalShip)).toLocaleString('vi-VN')} đ</span>
                       </div>
                       
                       {/* Dòng Thuế GTGT 5% bóc tách rõ ràng */}
                       {Number(selectedInvoice.totalTax) > 0 ? (
                         <div className="flex justify-between border-b border-dashed border-gray-200 pb-2 text-gray-600">
                            <span>Tiền Thuế GTGT (5%):</span>
-                           <span>{Number(selectedInvoice.totalTax).toLocaleString('vi-VN')} đ</span>
+                           <span>{Math.round(Number(selectedInvoice.totalTax)).toLocaleString('vi-VN')} đ</span>
                         </div>
                       ) : (
                         <div className="flex justify-between border-b border-dashed border-gray-200 pb-2 text-gray-600">
@@ -598,14 +603,14 @@ export default function OrdersPage() {
                       {Number(selectedInvoice.totalShip) > 0 && (
                         <div className="flex justify-between border-b border-dashed border-gray-200 pb-2 text-gray-600">
                            <span>Phí vận chuyển:</span>
-                           <span>{Number(selectedInvoice.totalShip).toLocaleString('vi-VN')} đ</span>
+                           <span>{Math.round(Number(selectedInvoice.totalShip)).toLocaleString('vi-VN')} đ</span>
                         </div>
                       )}
                       
                       {/* TỔNG TIỀN */}
                       <div className="flex justify-between items-end border-b-2 border-gray-800 pb-3 pt-2 bg-gray-50 px-3 rounded-t-lg">
                          <span className="text-sm font-bold uppercase text-gray-900">TỔNG THANH TOÁN:</span>
-                         <span className="text-2xl font-black text-gray-900">{Number(selectedInvoice.totalRevenue).toLocaleString('vi-VN')} đ</span>
+                         <span className="text-2xl font-black text-gray-900">{Math.round(Number(selectedInvoice.totalRevenue)).toLocaleString('vi-VN')} đ</span>
                       </div>
                    </div>
                 </div>
@@ -614,7 +619,7 @@ export default function OrdersPage() {
                 <div className="mb-10 text-sm font-semibold text-gray-800 bg-blue-50/50 p-3 rounded-lg border border-blue-100 flex gap-2">
                    <span className="shrink-0 italic">Số tiền viết bằng chữ: </span>
                    <span className="font-bold text-blue-900 uppercase">
-                     {readNumberToText(selectedInvoice.totalRevenue)}
+                     {readNumberToText(Math.round(selectedInvoice.totalRevenue))}
                    </span>
                 </div>
 

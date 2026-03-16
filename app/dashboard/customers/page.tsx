@@ -38,7 +38,17 @@ export default function CustomersPage() {
         const avgPrice = totalWeight > 0 ? (totalSpent / totalWeight) : 0;
         const sortedOrders = c.orders?.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) || [];
 
-        return { ...c, totalSpent, totalProfit, totalWeight, totalDebt, orderCount: c.orders?.length || 0, isVip, avgPrice, orders: sortedOrders }
+        return { 
+          ...c, 
+          totalSpent: Math.round(totalSpent), 
+          totalProfit: Math.round(totalProfit), 
+          totalWeight, 
+          totalDebt: Math.round(totalDebt), 
+          orderCount: c.orders?.length || 0, 
+          isVip, 
+          avgPrice: Math.round(avgPrice), 
+          orders: sortedOrders 
+        }
       })
       processed.sort((a, b) => b.totalSpent - a.totalSpent)
       setCustomers(processed)
@@ -94,6 +104,7 @@ export default function CustomersPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map((c) => {
           const isBadCustomer = c.note?.toLowerCase().includes('bom') || c.note?.toLowerCase().includes('xấu');
+          const isProfitable = c.totalProfit >= 0;
 
           return (
             <div key={c.id} className={`relative bg-white p-5 md:p-6 rounded-[24px] border ${isBadCustomer ? 'border-red-200' : 'border-gray-200'} shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between`}>
@@ -103,15 +114,13 @@ export default function CustomersPage() {
               </button>
 
               <div>
-                {/* Khu vực thẻ VIP và Nút Zalo gom chung 1 hàng cho gọn */}
                 <div className="flex justify-between items-center mb-5">
                    {c.isVip ? (
                      <div className="inline-flex bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full font-bold text-[10px] uppercase items-center gap-1 border border-yellow-200 shadow-sm">
                        <Crown size={12} /> KHÁCH VIP
                      </div>
-                   ) : <div className="h-6"></div> /* Giữ không gian nếu không phải VIP */}
+                   ) : <div className="h-6"></div>}
                    
-                   {/* NÚT ZALO THẦN THÁNH */}
                    {c.phone && (
                      <a 
                        href={`https://zalo.me/${c.phone.replace(/\s/g, '')}`} 
@@ -131,7 +140,6 @@ export default function CustomersPage() {
                   <div className="space-y-1.5 pr-6 w-full">
                     <h3 className="text-lg md:text-xl font-bold text-gray-900 truncate leading-none">{c.name}</h3>
                     
-                    {/* Sửa SĐT */}
                     <div className="flex items-center gap-1.5 text-gray-500 font-medium">
                       <Phone size={12} className="shrink-0" />
                       <input 
@@ -143,7 +151,6 @@ export default function CustomersPage() {
                       />
                     </div>
 
-                    {/* Sửa Địa chỉ */}
                     <div className="flex items-center gap-1.5 text-gray-500 font-medium">
                       <MapPin size={12} className="shrink-0" />
                       <input 
@@ -181,9 +188,12 @@ export default function CustomersPage() {
                     <p className="text-[9px] font-bold text-gray-500 uppercase mb-0.5">Đã chi tiêu</p>
                     <p className="text-sm font-black text-blue-700 truncate w-full text-center" title={`${c.totalSpent.toLocaleString()}đ`}>{c.totalSpent.toLocaleString()}đ</p>
                   </div>
-                  <div className="bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100 flex flex-col justify-center items-center">
-                    <p className="text-[9px] font-bold text-emerald-600 uppercase mb-0.5">Lợi nhuận</p>
-                    <p className="text-sm font-black text-emerald-700 truncate w-full text-center" title={`+${c.totalProfit.toLocaleString()}đ`}>+{c.totalProfit.toLocaleString()}đ</p>
+                  {/* BỘ LỌC LÃI/LỖ ĐÃ SỬA LỖI +- */}
+                  <div className={`p-2.5 rounded-xl border flex flex-col justify-center items-center ${isProfitable ? 'bg-emerald-50/50 border-emerald-100' : 'bg-red-50/50 border-red-100'}`}>
+                    <p className={`text-[9px] font-bold uppercase mb-0.5 ${isProfitable ? 'text-emerald-600' : 'text-red-600'}`}>Lợi nhuận</p>
+                    <p className={`text-sm font-black truncate w-full text-center ${isProfitable ? 'text-emerald-700' : 'text-red-700'}`} title={`${isProfitable ? '+' : '-'}${Math.abs(c.totalProfit).toLocaleString()}đ`}>
+                      {isProfitable ? '+' : '-'}{Math.abs(c.totalProfit).toLocaleString()}đ
+                    </p>
                   </div>
                 </div>
               </div>
@@ -208,10 +218,9 @@ export default function CustomersPage() {
               {selectedCustomer.address && <p className="text-xs font-medium text-gray-500 mt-1 flex items-center gap-1 truncate"><MapPin size={12}/> {selectedCustomer.address}</p>}
             </div>
 
-            {/* Khối tóm tắt thu gọn cho Mobile */}
             <div className="grid grid-cols-3 gap-2 mb-5 bg-gray-50 p-3 rounded-xl border border-gray-200">
                <div className="text-center border-r border-gray-200"><p className="text-[8px] md:text-[9px] font-bold text-gray-500 uppercase">Tổng mua</p><p className="text-sm md:text-base font-black text-gray-900">{selectedCustomer.totalWeight.toFixed(2)} kg</p></div>
-               <div className="text-center border-r border-gray-200"><p className="text-[8px] md:text-[9px] font-bold text-gray-500 uppercase">Giá TB/1kg</p><p className="text-sm md:text-base font-black text-green-600">{Math.round(selectedCustomer.avgPrice).toLocaleString()}đ</p></div>
+               <div className="text-center border-r border-gray-200"><p className="text-[8px] md:text-[9px] font-bold text-gray-500 uppercase">Giá TB/1kg</p><p className="text-sm md:text-base font-black text-green-600">{selectedCustomer.avgPrice.toLocaleString()}đ</p></div>
                <div className="text-center"><p className="text-[8px] md:text-[9px] font-bold text-gray-500 uppercase">Phân loại</p><p className="text-[10px] md:text-xs mt-1 font-bold text-purple-600 uppercase bg-purple-50 px-1 py-0.5 rounded inline-block">{selectedCustomer.customer_type}</p></div>
             </div>
 
@@ -219,21 +228,30 @@ export default function CustomersPage() {
               {selectedCustomer.orders?.length === 0 ? (
                  <p className="text-center text-gray-400 text-xs py-10 font-medium">Khách hàng chưa có lịch sử mua sắm.</p>
               ) : (
-                 selectedCustomer.orders?.map((order: any) => (
-                   <div key={order.id} className="bg-white border border-gray-200 p-3 md:p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center hover:border-blue-300 transition-colors shadow-sm gap-3">
-                     <div className="flex gap-3 items-center w-full sm:w-auto">
-                       <div className="bg-gray-50 text-gray-600 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-gray-200 shrink-0">{new Date(order.created_at).toLocaleDateString('vi-VN')}</div>
-                       <div className="flex-1">
-                         <p className="font-bold text-gray-900 text-sm">{Number(order.weight).toFixed(3)} kg {order.batches?.batch_code && <span className="ml-1 bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] uppercase border border-blue-100">Lô: {order.batches.batch_code}</span>}</p>
-                         <p className={`text-[9px] font-medium mt-0.5 ${order.status === 'Đã giao - Còn nợ' ? 'text-red-500 font-bold' : 'text-gray-500'}`}>Ẩm: {order.moisture_level || 0}% | Hao: {order.weight_loss || 0}kg</p>
+                 selectedCustomer.orders?.map((order: any) => {
+                   const roundedRev = Math.round(Number(order.revenue || 0));
+                   const roundedProf = Math.round(Number(order.profit || 0));
+                   const isOrderProfit = roundedProf >= 0;
+
+                   return (
+                     <div key={order.id} className="bg-white border border-gray-200 p-3 md:p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center hover:border-blue-300 transition-colors shadow-sm gap-3">
+                       <div className="flex gap-3 items-center w-full sm:w-auto">
+                         <div className="bg-gray-50 text-gray-600 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-gray-200 shrink-0">{new Date(order.created_at).toLocaleDateString('vi-VN')}</div>
+                         <div className="flex-1">
+                           <p className="font-bold text-gray-900 text-sm">{Number(order.weight).toFixed(3)} kg {order.batches?.batch_code && <span className="ml-1 bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded text-[9px] uppercase border border-blue-100">Lô: {order.batches.batch_code}</span>}</p>
+                           <p className={`text-[9px] font-medium mt-0.5 ${order.status === 'Đã giao - Còn nợ' ? 'text-red-500 font-bold' : 'text-gray-500'}`}>Ẩm: {order.moisture_level || 0}% | Hao: {order.weight_loss || 0}kg</p>
+                         </div>
+                       </div>
+                       <div className="text-left sm:text-right w-full sm:w-auto border-t sm:border-t-0 border-dashed border-gray-200 pt-2 sm:pt-0 flex sm:flex-col justify-between items-center sm:items-end">
+                         <p className="font-black text-sm md:text-base text-blue-600">{roundedRev.toLocaleString()}đ</p>
+                         {/* FIX LỖI +- TRONG TỪNG ĐƠN HÀNG */}
+                         <p className={`text-[9px] font-bold px-1.5 py-0.5 rounded border mt-1 ${isOrderProfit ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-red-600 bg-red-50 border-red-100'}`}>
+                           {isOrderProfit ? 'Lời: +' : 'Lỗ: -'}{Math.abs(roundedProf).toLocaleString()}đ
+                         </p>
                        </div>
                      </div>
-                     <div className="text-left sm:text-right w-full sm:w-auto border-t sm:border-t-0 border-dashed border-gray-200 pt-2 sm:pt-0 flex sm:flex-col justify-between items-center sm:items-end">
-                       <p className="font-black text-sm md:text-base text-blue-600">{Number(order.revenue).toLocaleString()}đ</p>
-                       <p className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">Lời: +{Number(order.profit).toLocaleString()}đ</p>
-                     </div>
-                   </div>
-                 ))
+                   );
+                 })
               )}
             </div>
           </div>

@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar
 } from 'recharts'
-import { DollarSign, TrendingUp, ArrowDownRight, Receipt, Wallet, PlusCircle, PieChart, Filter, Pencil, Trash2, X, Activity, BarChart as BarChartIcon, UserCheck, Heart } from 'lucide-react'
+import { DollarSign, TrendingUp, ArrowDownRight, Receipt, Wallet, PlusCircle, PieChart, Filter, Pencil, Trash2, X, Activity, BarChart as BarChartIcon, UserCheck, Heart, Landmark } from 'lucide-react'
 
 export default function ProfitPage() {
   const [orders, setOrders] = useState<any[]>([])
@@ -114,7 +114,7 @@ export default function ProfitPage() {
     return { filteredOrders: fOrders, filteredExpenses: fExpenses }
   }, [orders, expenses, filterType, filterYear, filterMonth])
 
-  // --- THUẬT TOÁN TÍNH TOÁN DÒNG TIỀN MỚI ---
+  // --- THUẬT TOÁN TÍNH TOÁN DÒNG TIỀN TRƯỚC/SAU THUẾ ---
   const stats = useMemo(() => {
     const totalRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.revenue || 0), 0)
     const totalCOGS = filteredOrders.reduce((sum, o) => sum + Number(o.cost || 0), 0)
@@ -131,28 +131,24 @@ export default function ProfitPage() {
     // 1. LỢI NHUẬN TRƯỚC THUẾ (LÃI GỘP): Bán hàng lời bao nhiêu
     const profitBeforeTax = totalRevenue - totalCOGS - totalShip - totalLossCost;
     
-    // 2. LỢI NHUẬN TỔNG RÒNG: Cục Lãi Gộp đem đi đóng thuế và trừ chi phí lặt vặt (Tiền đút túi)
+    // 2. LỢI NHUẬN TỔNG RÒNG: Cục Lãi Gộp đem đi đóng thuế và trừ chi phí sổ chi
     const netProfit = profitBeforeTax - totalTax - totalOutsideExpenses;
     
     const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0.0'
 
-    // LẤY DANH SÁCH VÀ TÍNH TIỀN CHO 2 KÉT SẮT
+    // LẤY DANH SÁCH VÀ TÍNH TIỀN CÁ NHÂN (HƯỞNG TRỌN 100%, KHÔNG TRỪ THUẾ)
     const duyOrders = filteredOrders.filter(o => o.seller === 'Duy').sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     const quyenOrders = filteredOrders.filter(o => o.seller !== 'Duy').sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     
     const totalDuyProfitRaw = duyOrders.reduce((sum, o) => {
         const lossCost = Number(o.weight) > 0 ? (Number(o.weight_loss || 0) * (Number(o.cost) / Number(o.weight))) : 0;
-        // Đơn Duy KHÔNG TRỪ THUẾ
         return sum + (Number(o.revenue) - Number(o.cost) - Number(o.shipping_fee || 0) - lossCost);
     }, 0);
 
     const totalQuyenProfitRaw = quyenOrders.reduce((sum, o) => {
         const lossCost = Number(o.weight) > 0 ? (Number(o.weight_loss || 0) * (Number(o.cost) / Number(o.weight))) : 0;
-        // Đơn Quyên VẪN TRỪ THUẾ
-        return sum + (Number(o.revenue) - Number(o.cost) - Number(o.tax_amount || 0) - Number(o.shipping_fee || 0) - lossCost);
+        return sum + (Number(o.revenue) - Number(o.cost) - Number(o.shipping_fee || 0) - lossCost);
     }, 0);
-
-    const finalDuyPocketMoney = totalDuyProfitRaw * (10 / 15);
 
     // DỮ LIỆU BIỂU ĐỒ
     const isMonthView = filterType === 'month'
@@ -167,7 +163,6 @@ export default function ProfitPage() {
       
       const costPerKg = Number(o.weight) > 0 ? (Number(o.cost) / Number(o.weight)) : 0;
       const loss = Number(o.weight_loss || 0) * costPerKg;
-      // Trong biểu đồ vẫn hiển thị Lợi nhuận ròng
       chartDataMap[key].gross += (Number(o.revenue || 0) - Number(o.cost || 0) - Number(o.tax_amount || 0) - Number(o.shipping_fee || 0) - loss)
       chartDataMap[key].Loi_nhuan_rong = chartDataMap[key].gross
     })
@@ -197,9 +192,7 @@ export default function ProfitPage() {
     return { 
         totalRevenue, totalCOGS, totalTax, totalShip, totalLossCost, 
         totalOutsideExpenses, profitBeforeTax, netProfit, profitMargin, 
-        chartData, 
-        duyOrders, quyenOrders,
-        totalDuyProfitRaw, totalQuyenProfitRaw, finalDuyPocketMoney
+        chartData, duyOrders, quyenOrders, totalDuyProfitRaw, totalQuyenProfitRaw
     }
   }, [filteredOrders, filteredExpenses, filterType])
 
@@ -256,43 +249,80 @@ export default function ProfitPage() {
         </form>
       )}
 
-      {/* --- CỤM KÉT SẮT TÁCH BẠCH RÕ RÀNG TRƯỚC/SAU THUẾ --- */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
-        {/* KÉT 1: LỢI NHUẬN TRƯỚC THUẾ (LÃI GỘP) */}
-        <div className="bg-white p-6 rounded-[30px] border border-gray-100 shadow-sm relative overflow-hidden group col-span-1">
-           <div className="absolute -right-4 -top-4 text-gray-50 opacity-50 group-hover:scale-110 transition-transform"><Wallet size={100}/></div>
-           <p className="text-xs font-black uppercase text-gray-400 tracking-widest mb-2 relative z-10">Lợi Nhuận Gộp (Trước Thuế)</p>
-           <h2 className="text-3xl lg:text-4xl font-black text-gray-900 truncate relative z-10" title={stats.profitBeforeTax.toLocaleString() + 'đ'}>
-              {formatCompactNumber(stats.profitBeforeTax)}
-           </h2>
-           <p className="text-[10px] text-gray-400 mt-2 font-bold relative z-10 uppercase">(Chưa trừ Thuế và Sổ chi)</p>
-        </div>
+      {/* ==================================================== */}
+      {/* TẦNG 1: TÀI CHÍNH TỔNG XƯỞNG (DOANH THU & LỢI NHUẬN)   */}
+      {/* ==================================================== */}
+      <div>
+        <h3 className="font-black uppercase text-gray-500 text-xs tracking-widest mb-3 flex items-center gap-2"><Landmark size={16}/> TÀI CHÍNH TỔNG XƯỞNG</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          
+          {/* Ô 1: TỔNG DOANH THU */}
+          <div className="bg-white p-6 rounded-[30px] border border-gray-100 shadow-sm relative overflow-hidden group">
+            <div className="absolute -right-4 -top-4 text-blue-50 opacity-50 group-hover:scale-110 transition-transform"><TrendingUp size={100}/></div>
+            <p className="text-xs font-black uppercase text-gray-400 tracking-widest mb-2 relative z-10">Tổng Doanh Thu</p>
+            <h2 className="text-3xl lg:text-4xl font-black text-blue-600 truncate relative z-10" title={stats.totalRevenue.toLocaleString() + 'đ'}>
+                {formatCompactNumber(stats.totalRevenue)}
+            </h2>
+            <p className="text-[10px] text-gray-400 mt-2 font-bold relative z-10 uppercase">Tổng tiền khách đã trả</p>
+          </div>
 
-        {/* KÉT 2: QUỸ CỦA VỢ (QUYÊN) */}
-        <div onClick={() => setShowQuyenHistory(true)} className="bg-gradient-to-br from-pink-400 to-pink-600 p-6 rounded-[30px] shadow-lg text-white relative overflow-hidden group cursor-pointer hover:opacity-95 transition-opacity border-2 border-pink-300">
-           <div className="absolute -right-4 -top-4 text-pink-300 opacity-30 group-hover:scale-110 transition-transform"><Heart size={100}/></div>
-           <p className="text-xs font-black uppercase text-pink-100 tracking-widest mb-2 relative z-10 flex items-center gap-1">Quỹ Doanh Thu Quyên Bán <span className="bg-white text-pink-600 px-1.5 py-0.5 rounded text-[8px] ml-1">BẤM XEM ĐƠN</span></p>
-           <h2 className="text-3xl lg:text-4xl font-black truncate relative z-10" title={stats.totalQuyenProfitRaw.toLocaleString() + 'đ'}>
-              +{formatCompactNumber(stats.totalQuyenProfitRaw)}
-           </h2>
-           <p className="text-[10px] text-pink-100 mt-2 font-bold relative z-10 uppercase bg-pink-800/20 inline-block px-2 py-1 rounded">
-               Nhập thẳng quỹ chung xưởng
-           </p>
-        </div>
+          {/* Ô 2: LỢI NHUẬN GỘP (TRƯỚC THUẾ) */}
+          <div className="bg-white p-6 rounded-[30px] border border-gray-100 shadow-sm relative overflow-hidden group">
+            <div className="absolute -right-4 -top-4 text-orange-50 opacity-50 group-hover:scale-110 transition-transform"><Wallet size={100}/></div>
+            <p className="text-xs font-black uppercase text-gray-400 tracking-widest mb-2 relative z-10">Lợi Nhuận Gộp</p>
+            <h2 className="text-3xl lg:text-4xl font-black text-gray-900 truncate relative z-10" title={stats.profitBeforeTax.toLocaleString() + 'đ'}>
+                {formatCompactNumber(stats.profitBeforeTax)}
+            </h2>
+            <p className="text-[10px] text-gray-400 mt-2 font-bold relative z-10 uppercase">(Chưa trừ Thuế và Sổ chi)</p>
+          </div>
 
-        {/* KÉT 3: QUỸ CỦA CHỒNG (SẾP DUY) */}
-        <div onClick={() => setShowDuyHistory(true)} className="bg-gradient-to-br from-orange-400 to-orange-600 p-6 rounded-[30px] shadow-lg text-white relative overflow-hidden group border-2 border-orange-300 cursor-pointer hover:opacity-95 transition-opacity">
-           <div className="absolute -right-4 -top-4 text-orange-300 opacity-30 group-hover:scale-110 transition-transform"><UserCheck size={100}/></div>
-           <p className="text-xs font-black uppercase text-orange-100 tracking-widest mb-2 relative z-10 flex items-center gap-1">Tiền Lãi Bỏ Túi Duy (66.67%) <span className="bg-white text-orange-600 px-1.5 py-0.5 rounded text-[8px] ml-1">BẤM XEM ĐƠN</span></p>
-           <h2 className="text-3xl lg:text-4xl font-black truncate relative z-10" title={stats.finalDuyPocketMoney.toLocaleString() + 'đ'}>
-              +{formatCompactNumber(Math.round(stats.finalDuyPocketMoney))}
-           </h2>
-           <p className="text-[10px] text-orange-100 mt-2 font-bold relative z-10 uppercase bg-orange-800/20 inline-block px-2 py-1 rounded truncate">
-               Lãi Ròng Cả Xưởng: {stats.netProfit.toLocaleString()}đ (Đã Thuế)
-           </p>
-        </div>
+          {/* Ô 3: LỢI NHUẬN RÒNG (SAU THUẾ & CHI PHÍ) */}
+          <div className="bg-gradient-to-br from-emerald-400 to-emerald-600 p-6 rounded-[30px] shadow-lg border-2 border-emerald-300 relative overflow-hidden group">
+            <div className="absolute -right-4 -top-4 text-emerald-300 opacity-30 group-hover:scale-110 transition-transform"><DollarSign size={100}/></div>
+            <p className="text-xs font-black uppercase text-emerald-100 tracking-widest mb-2 relative z-10">LỢI NHUẬN RÒNG (BỎ TÚI)</p>
+            <h2 className="text-3xl lg:text-4xl font-black text-white truncate relative z-10" title={stats.netProfit.toLocaleString() + 'đ'}>
+                {formatCompactNumber(stats.netProfit)}
+            </h2>
+            <p className="text-[10px] text-emerald-100 mt-2 font-bold relative z-10 uppercase bg-emerald-800/20 inline-block px-2 py-1 rounded">
+                (Đã trừ sạch Thuế & Sổ chi)
+            </p>
+          </div>
 
+        </div>
+      </div>
+
+      {/* ==================================================== */}
+      {/* TẦNG 2: CHIA TIỀN CÁ NHÂN (HƯỞNG 100% KHÔNG THUẾ)      */}
+      {/* ==================================================== */}
+      <div>
+        <h3 className="font-black uppercase text-gray-500 text-xs tracking-widest mb-3 flex items-center gap-2"><UserCheck size={16}/> TIỀN BỎ TÚI CÁ NHÂN (100%)</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          {/* KÉT 1: QUYÊN */}
+          <div onClick={() => setShowQuyenHistory(true)} className="bg-white p-6 rounded-[30px] border-2 border-pink-200 shadow-sm relative overflow-hidden group cursor-pointer hover:shadow-md transition-all">
+            <div className="absolute -right-4 -top-4 text-pink-50 opacity-50 group-hover:scale-110 transition-transform"><Heart size={100}/></div>
+            <p className="text-xs font-black uppercase text-gray-500 tracking-widest mb-2 relative z-10 flex items-center gap-1">Lãi Bỏ Túi Quyên <span className="bg-pink-100 text-pink-600 px-1.5 py-0.5 rounded text-[8px] ml-1">BẤM XEM ĐƠN</span></p>
+            <h2 className="text-3xl lg:text-4xl font-black text-pink-600 truncate relative z-10" title={stats.totalQuyenProfitRaw.toLocaleString() + 'đ'}>
+                +{formatCompactNumber(stats.totalQuyenProfitRaw)}
+            </h2>
+            <p className="text-[10px] text-gray-400 mt-2 font-bold relative z-10 uppercase">
+                Hưởng trọn vẹn (Không trừ Thuế)
+            </p>
+          </div>
+
+          {/* KÉT 2: DUY */}
+          <div onClick={() => setShowDuyHistory(true)} className="bg-white p-6 rounded-[30px] border-2 border-orange-200 shadow-sm relative overflow-hidden group cursor-pointer hover:shadow-md transition-all">
+            <div className="absolute -right-4 -top-4 text-orange-50 opacity-50 group-hover:scale-110 transition-transform"><UserCheck size={100}/></div>
+            <p className="text-xs font-black uppercase text-gray-500 tracking-widest mb-2 relative z-10 flex items-center gap-1">Lãi Bỏ Túi Duy <span className="bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded text-[8px] ml-1">BẤM XEM ĐƠN</span></p>
+            <h2 className="text-3xl lg:text-4xl font-black text-orange-600 truncate relative z-10" title={stats.totalDuyProfitRaw.toLocaleString() + 'đ'}>
+                +{formatCompactNumber(Math.round(stats.totalDuyProfitRaw))}
+            </h2>
+            <p className="text-[10px] text-gray-400 mt-2 font-bold relative z-10 uppercase">
+                Hưởng trọn vẹn (Không trừ Thuế)
+            </p>
+          </div>
+
+        </div>
       </div>
 
       {/* MODAL LỊCH SỬ BÁN HÀNG CỦA DUY */}
@@ -304,7 +334,7 @@ export default function ProfitPage() {
                <h2 className="text-xl font-black uppercase tracking-tighter text-orange-600 flex items-center gap-2">
                   <UserCheck size={24}/> Lịch sử Chiết Khấu Sếp Duy
                </h2>
-               <p className="text-xs font-bold text-gray-500 mt-1">Danh sách các đơn hàng do Sếp Duy chốt (Không bị trừ thuế, Áp dụng tỷ lệ chia 10/15 = 66.67%)</p>
+               <p className="text-xs font-bold text-gray-500 mt-1">Danh sách các đơn hàng do Sếp Duy chốt (Không trừ thuế, Hưởng trọn 100%)</p>
             </div>
             <div className="overflow-x-auto overflow-y-auto pr-2 space-y-2 custom-scrollbar flex-1">
               <table className="w-full text-left border-collapse min-w-[600px]">
@@ -313,8 +343,8 @@ export default function ProfitPage() {
                     <th className="p-3 rounded-l-lg">Khách hàng</th>
                     <th className="p-3">Ngày bán</th>
                     <th className="p-3 text-center">Phân Loại</th>
-                    <th className="p-3 text-right">Lãi thực của Đơn</th>
-                    <th className="p-3 rounded-r-lg text-right text-orange-600">Duy Bỏ Túi (66.67%)</th>
+                    <th className="p-3 text-right">Doanh Thu Đơn</th>
+                    <th className="p-3 rounded-r-lg text-right text-orange-600">Duy Bỏ Túi (100%)</th>
                   </tr>
                 </thead>
                 <tbody className="text-sm font-bold text-gray-700">
@@ -324,14 +354,13 @@ export default function ProfitPage() {
                       stats.duyOrders.map((o: any) => {
                           const lossCost = Number(o.weight) > 0 ? (Number(o.weight_loss || 0) * (Number(o.cost) / Number(o.weight))) : 0;
                           const realProfit = Number(o.revenue) - Number(o.cost) - Number(o.shipping_fee || 0) - lossCost;
-                          const myCommission = realProfit * (10/15);
                           return (
                             <tr key={o.id} className="border-b border-gray-100 last:border-0 hover:bg-orange-50/30 transition-colors">
                               <td className="p-3 text-gray-900">{o.customers?.name}</td>
                               <td className="p-3 text-gray-500 text-xs">{new Date(o.created_at).toLocaleDateString('vi-VN')}</td>
                               <td className="p-3 text-center"><span className="text-orange-500 uppercase text-[10px] font-black border border-orange-200 px-2 py-0.5 rounded">{o.grade_type || 'Xô'}</span></td>
-                              <td className="p-3 text-right text-emerald-600" title="Doanh thu - Vốn - Ship - Hao hụt (Không trừ Thuế)">{realProfit.toLocaleString()}đ</td>
-                              <td className="p-3 text-right text-orange-600 font-black text-base">+{Math.round(myCommission).toLocaleString()}đ</td>
+                              <td className="p-3 text-right text-gray-500">{Number(o.revenue).toLocaleString()}đ</td>
+                              <td className="p-3 text-right text-orange-600 font-black text-base" title="Đã trừ Vốn, Ship, Hao hụt. KHÔNG trừ Thuế.">+{Math.round(realProfit).toLocaleString()}đ</td>
                             </tr>
                           )
                       })
@@ -350,9 +379,9 @@ export default function ProfitPage() {
             <button onClick={() => setShowQuyenHistory(false)} className="absolute top-5 right-5 text-gray-400 hover:text-red-500 bg-gray-100 hover:bg-red-50 p-2 rounded-full transition-colors"><X size={20}/></button>
             <div className="mb-6 pr-8 border-b border-gray-100 pb-4">
                <h2 className="text-xl font-black uppercase tracking-tighter text-pink-600 flex items-center gap-2">
-                  <Heart size={24}/> Lịch sử Giao Dịch Quyên Bán
+                  <Heart size={24}/> Lịch sử Chiết Khấu Quyên
                </h2>
-               <p className="text-xs font-bold text-gray-500 mt-1">Danh sách các đơn hàng do Quyên chốt (Lợi nhuận này sẽ được nhập vào quỹ chung xưởng)</p>
+               <p className="text-xs font-bold text-gray-500 mt-1">Danh sách các đơn hàng do Quyên chốt (Không trừ thuế, Hưởng trọn 100%)</p>
             </div>
             <div className="overflow-x-auto overflow-y-auto pr-2 space-y-2 custom-scrollbar flex-1">
               <table className="w-full text-left border-collapse min-w-[600px]">
@@ -361,8 +390,8 @@ export default function ProfitPage() {
                     <th className="p-3 rounded-l-lg">Khách hàng</th>
                     <th className="p-3">Ngày bán</th>
                     <th className="p-3 text-center">Phân Loại</th>
-                    <th className="p-3 text-right">Doanh Thu</th>
-                    <th className="p-3 rounded-r-lg text-right text-emerald-600">Lãi Thực Mang Về</th>
+                    <th className="p-3 text-right">Doanh Thu Đơn</th>
+                    <th className="p-3 rounded-r-lg text-right text-pink-600">Quyên Bỏ Túi (100%)</th>
                   </tr>
                 </thead>
                 <tbody className="text-sm font-bold text-gray-700">
@@ -371,14 +400,14 @@ export default function ProfitPage() {
                   ) : (
                       stats.quyenOrders.map((o: any) => {
                           const lossCost = Number(o.weight) > 0 ? (Number(o.weight_loss || 0) * (Number(o.cost) / Number(o.weight))) : 0;
-                          const realProfit = Number(o.revenue) - Number(o.cost) - Number(o.tax_amount || 0) - Number(o.shipping_fee || 0) - lossCost;
+                          const realProfit = Number(o.revenue) - Number(o.cost) - Number(o.shipping_fee || 0) - lossCost;
                           return (
                             <tr key={o.id} className="border-b border-gray-100 last:border-0 hover:bg-pink-50/30 transition-colors">
                               <td className="p-3 text-gray-900">{o.customers?.name}</td>
                               <td className="p-3 text-gray-500 text-xs">{new Date(o.created_at).toLocaleDateString('vi-VN')}</td>
                               <td className="p-3 text-center"><span className="text-orange-500 uppercase text-[10px] font-black border border-orange-200 px-2 py-0.5 rounded">{o.grade_type || 'Xô'}</span></td>
-                              <td className="p-3 text-right text-blue-600">{Number(o.revenue).toLocaleString()}đ</td>
-                              <td className="p-3 text-right text-emerald-600 font-black text-base" title="Đã trừ vốn, thuế, ship, hao hụt">+{realProfit.toLocaleString()}đ</td>
+                              <td className="p-3 text-right text-gray-500">{Number(o.revenue).toLocaleString()}đ</td>
+                              <td className="p-3 text-right text-pink-600 font-black text-base" title="Đã trừ Vốn, Ship, Hao hụt. KHÔNG trừ Thuế.">+{Math.round(realProfit).toLocaleString()}đ</td>
                             </tr>
                           )
                       })
@@ -390,7 +419,7 @@ export default function ProfitPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4">
         
         {/* BIỂU ĐỒ CỘT */}
         <div className="lg:col-span-2 bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
@@ -431,10 +460,10 @@ export default function ProfitPage() {
                 <div className="space-y-6">
                    {/* Thanh tiến độ */}
                    <div className="h-6 w-full flex rounded-full overflow-hidden mb-8 shadow-inner bg-gray-800">
-                      <div style={{width: `${(stats.totalCOGS/stats.totalRevenue)*100}%`}} className="bg-slate-500 hover:opacity-80 transition-opacity" title="Tiền Vốn Yến"></div>
+                      <div style={{width: `${(stats.totalCOGS/stats.totalRevenue)*100}%`}} className="bg-slate-500 hover:opacity-80 transition-opacity" title="Tiền Vốn Yến Kho"></div>
                       <div style={{width: `${((stats.totalTax + stats.totalShip + stats.totalLossCost)/stats.totalRevenue)*100}%`}} className="bg-orange-500 hover:opacity-80 transition-opacity" title="Thuế, Ship, Khấu hao"></div>
                       <div style={{width: `${(stats.totalOutsideExpenses/stats.totalRevenue)*100}%`}} className="bg-red-500 hover:opacity-80 transition-opacity" title="Chi phí Vận hành ngoài"></div>
-                      <div style={{width: `${(stats.netProfit/stats.totalRevenue)*100}%`}} className="bg-emerald-500 hover:opacity-80 transition-opacity" title="Lợi Nhuận Ròng"></div>
+                      <div style={{width: `${(stats.netProfit/stats.totalRevenue)*100}%`}} className="bg-emerald-500 hover:opacity-80 transition-opacity" title="Lợi Nhuận Ròng Tổng Xưởng"></div>
                    </div>
 
                    {/* Chú giải */}
@@ -462,7 +491,10 @@ export default function ProfitPage() {
                       </div>
                       <div className="flex justify-between items-center border-t border-gray-700 pt-4 mt-2">
                          <div className="flex items-center gap-3"><span className="w-4 h-4 rounded-full bg-emerald-500"></span> <span className="text-sm font-black text-white uppercase tracking-widest">Lợi Nhuận Ròng</span></div>
-                         <span className="font-black text-emerald-400 text-xl">{((stats.netProfit/stats.totalRevenue)*100).toFixed(1)}%</span>
+                         <div className="text-right">
+                            <span className="font-black text-emerald-400 text-xl block">{((stats.netProfit/stats.totalRevenue)*100).toFixed(1)}%</span>
+                            <span className="text-[10px] text-gray-500">{formatCompactNumber(stats.netProfit)}</span>
+                         </div>
                       </div>
                    </div>
                 </div>
@@ -474,7 +506,7 @@ export default function ProfitPage() {
       </div>
 
       {/* SỔ CHI TIỀN */}
-      <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100">
+      <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 mt-4">
          <div className="flex items-center justify-between mb-6 pb-6 border-b border-dashed border-gray-200">
             <div>
                <h3 className="text-xl font-black uppercase tracking-tight text-gray-900 flex items-center gap-2"><Receipt className="text-red-500"/> Sổ Chi Tiền Ngoài</h3>
