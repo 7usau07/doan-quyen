@@ -3,13 +3,15 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { 
   Package, Image as ImageIcon, History, X, 
-  CheckCircle2, AlertCircle, Pencil, ListFilter, Trash2, ArrowRightLeft, Upload, AlertTriangle, Calendar
+  CheckCircle2, AlertCircle, Pencil, ListFilter, Trash2, ArrowRightLeft, Upload, AlertTriangle, Calendar, UserCheck
 } from 'lucide-react'
 
 export default function InventoryPage() {
   const [batches, setBatches] = useState<any[]>([])
+  const [suppliers, setSuppliers] = useState<any[]>([]) 
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false) 
   const [modalData, setModalData] = useState<{ batch: any, type: string } | null>(null)
 
   const [form, setForm] = useState({ 
@@ -46,15 +48,16 @@ export default function InventoryPage() {
   const total_cost_input = (w_xo * c_xo) + (w_dep * c_dep) + (w_vua * c_vua) + (w_xau * c_xau);
   const average_price = total_kg_input > 0 ? (total_cost_input / total_kg_input) : 0;
 
-  const fetchBatches = async () => {
-    const { data } = await supabase
-      .from('batches')
-      .select('*, orders(*, customers(name, phone))')
-      .order('purchase_date', { ascending: false }) 
-      .order('created_at', { ascending: false })
+  const fetchBatchesAndSuppliers = async () => {
+    const [batchRes, supplierRes] = await Promise.all([
+      supabase.from('batches').select('*, orders(*, customers(name, phone))').order('purchase_date', { ascending: false }).order('created_at', { ascending: false }),
+      supabase.from('suppliers').select('id, name').order('name', { ascending: true })
+    ]);
 
-    if (data) {
-      const processed = data.map((b: any) => {
+    if (supplierRes.data) setSuppliers(supplierRes.data);
+
+    if (batchRes.data) {
+      const processed = batchRes.data.map((b: any) => {
         const totalPurchaseCost = 
             (Number(b.weight_xo || 0) * Number(b.cost_xo || b.cost_per_kg || 0)) + 
             (Number(b.weight_dep || 0) * Number(b.cost_dep || b.cost_per_kg || 0)) + 
@@ -89,7 +92,7 @@ export default function InventoryPage() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchBatches() }, [])
+  useEffect(() => { fetchBatchesAndSuppliers() }, [])
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -107,6 +110,20 @@ export default function InventoryPage() {
 
     let finalImageUrl = form.image_url;
 
+    // Vẫn giữ tính năng tự động thêm Người bán mới vào danh bạ (bảng suppliers)
+    if (form.supplier_name.trim() !== '') {
+       const existingSupplier = suppliers.find(s => s.name.toLowerCase() === form.supplier_name.toLowerCase().trim());
+       if (!existingSupplier) {
+           const { data: newSupplier } = await supabase.from('suppliers').insert([{
+               name: form.supplier_name.trim(),
+               type: 'nha_moi' 
+           }]).select().single();
+           if (newSupplier) {
+               setSuppliers([...suppliers, newSupplier]); 
+           }
+       }
+    }
+
     if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
         const fileName = `${Date.now()}.${fileExt}`;
@@ -121,7 +138,8 @@ export default function InventoryPage() {
         }
     }
 
-    await supabase.from('batches').insert([{
+    // ĐÃ FIX: Tháo bỏ cột supplier_id gây lỗi câm, chỉ lưu tên text bình thường
+    const { error: insertError } = await supabase.from('batches').insert([{
       batch_code: form.batch_code.toUpperCase(), 
       total_weight: total_kg_input,
       weight_xo: w_xo, cost_xo: c_xo,
@@ -130,12 +148,20 @@ export default function InventoryPage() {
       weight_xau: w_xau, cost_xau: c_xau,
       cost_per_kg: average_price, 
       image_url: finalImageUrl, note: form.note, purchase_date: form.purchase_date,
-      supplier_name: form.supplier_name, has_receipt: form.has_receipt      
+      supplier_name: form.supplier_name.trim(), 
+      has_receipt: form.has_receipt      
     }])
+    
+    // ĐÃ FIX: Gắn còi báo động nếu Supabase từ chối
+    if (insertError) {
+        alert("Lỗi lưu Kho Yến: " + insertError.message);
+        setLoading(false);
+        return;
+    }
     
     setForm({ batch_code: '', image_url: '', note: '', purchase_date: new Date().toISOString().split('T')[0], supplier_name: '', has_receipt: false, weight_xo: '', cost_xo: '', weight_dep: '', cost_dep: '', weight_vua: '', cost_vua: '', weight_xau: '', cost_xau: '' })
     setImageFile(null); setImagePreview('');
-    setShowAddForm(false); fetchBatches()
+    setShowAddForm(false); fetchBatchesAndSuppliers();
   }
 
   const openEditBatch = (batch: any) => {
@@ -174,14 +200,14 @@ export default function InventoryPage() {
       total_weight: total_kg
     }).eq('id', editingBatch.id);
     
-    setEditingBatch(null); fetchBatches();
+    setEditingBatch(null); fetchBatchesAndSuppliers();
   }
 
   const handleDeleteBatch = async (id: string) => {
     if (window.confirm("Duy chắc chắn muốn xóa hẳn lô này? Sẽ mất luôn lịch sử đơn hàng của lô đó!")) {
         setLoading(true);
         await supabase.from('batches').delete().eq('id', id);
-        fetchBatches();
+        fetchBatchesAndSuppliers();
     }
   }
 
@@ -190,7 +216,7 @@ export default function InventoryPage() {
         setLoading(true);
         await supabase.from('orders').delete().eq('id', orderId);
         setModalData(null); 
-        fetchBatches();
+        fetchBatchesAndSuppliers();
     }
   }
 
@@ -199,6 +225,8 @@ export default function InventoryPage() {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + ' Tr'
     return num.toLocaleString('vi-VN')
   }
+
+  const filteredSuppliers = suppliers.filter(s => s.name.toLowerCase().includes(form.supplier_name.toLowerCase()));
 
   return (
     <div className="p-3 md:p-8 space-y-6 md:space-y-8 bg-gray-50 min-h-screen animate-in fade-in max-w-7xl mx-auto pb-24">
@@ -216,7 +244,7 @@ export default function InventoryPage() {
       </div>
 
       {showAddForm && (
-        <form onSubmit={handleAddBatch} className="bg-white p-5 md:p-8 rounded-[24px] border border-gray-200 shadow-sm space-y-5">
+        <form onSubmit={handleAddBatch} className="bg-white p-5 md:p-8 rounded-[24px] border border-gray-200 shadow-sm space-y-5 animate-in slide-in-from-top-2">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1">
                <label className="text-xs font-semibold text-gray-600 ml-1">Ngày Nhập</label>
@@ -270,7 +298,7 @@ export default function InventoryPage() {
                 <label className="text-[10px] font-semibold text-gray-600 mb-1 block">Tải ảnh lô hàng (Tùy chọn)</label>
                 <div className="relative">
                     <input type="file" accept="image/*" onChange={handleImageSelect} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                    <div className="bg-white border border-gray-300 rounded-lg p-2.5 flex items-center justify-center gap-2 font-medium text-gray-600 text-xs">
+                    <div className="bg-white border border-gray-300 rounded-lg p-2.5 flex items-center justify-center gap-2 font-medium text-gray-600 text-xs hover:border-blue-400 transition-colors">
                         <Upload size={14}/> <span className="truncate">{imageFile ? imageFile.name : 'Chụp hoặc chọn ảnh...'}</span>
                     </div>
                 </div>
@@ -282,15 +310,44 @@ export default function InventoryPage() {
              )}
           </div>
 
-          <div className="flex flex-col md:flex-row justify-between gap-3">
-            <input required placeholder="Nguồn nhập (Tên người bán)" className="w-full border border-gray-300 rounded-xl p-3 font-medium text-sm outline-none focus:border-blue-500" value={form.supplier_name} onChange={e => setForm({...form, supplier_name: e.target.value})} />
+          <div className="flex flex-col md:flex-row gap-3">
+            <div className="relative flex-1 w-full">
+              <input 
+                required 
+                placeholder="Gõ tìm hoặc nhập người bán mới..." 
+                className="w-full border border-gray-300 rounded-xl p-3 font-medium text-sm outline-none focus:border-blue-500 bg-white shadow-sm" 
+                value={form.supplier_name} 
+                onChange={e => { setForm({...form, supplier_name: e.target.value}); setShowSupplierDropdown(true); }}
+                onFocus={() => setShowSupplierDropdown(true)}
+              />
+              <UserCheck className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
+              
+              {showSupplierDropdown && form.supplier_name && filteredSuppliers.length > 0 && (
+                <ul className="absolute z-50 w-full bg-white border border-gray-200 shadow-xl rounded-xl mt-1 max-h-48 overflow-y-auto">
+                  {filteredSuppliers.map(s => (
+                    <li 
+                      key={s.id} 
+                      className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-b-0 text-sm font-bold text-gray-800 transition-colors flex items-center gap-2"
+                      onClick={() => { 
+                         setForm({...form, supplier_name: s.name}); 
+                         setShowSupplierDropdown(false); 
+                      }}
+                    >
+                      <UserCheck size={14} className="text-blue-500"/> {s.name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             
-            <label className="flex items-center justify-center gap-2 border border-gray-200 rounded-xl p-3 cursor-pointer bg-gray-50 w-full">
-              <input type="checkbox" className="w-4 h-4 accent-blue-600 rounded" checked={form.has_receipt} onChange={e => setForm({...form, has_receipt: e.target.checked})} />
-              <span className="text-xs font-semibold text-gray-700">Đã khai báo Thuế</span>
-            </label>
-            
-            <button type="submit" className="w-full bg-gray-900 text-white px-6 py-3 rounded-xl font-bold shadow-md">Lưu Kho</button>
+            <div className="flex gap-3 w-full md:w-auto">
+                <label className="flex-1 md:flex-none flex items-center justify-center gap-2 border border-gray-200 rounded-xl px-4 py-3 cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors shrink-0">
+                  <input type="checkbox" className="w-4 h-4 accent-blue-600 rounded" checked={form.has_receipt} onChange={e => setForm({...form, has_receipt: e.target.checked})} />
+                  <span className="text-xs font-bold text-gray-700 whitespace-nowrap">Khai báo Thuế</span>
+                </label>
+                
+                <button type="submit" className="flex-1 md:flex-none bg-gray-900 hover:bg-black transition-colors text-white px-8 py-3 rounded-xl font-bold shadow-md shrink-0 whitespace-nowrap">Lưu Kho</button>
+            </div>
           </div>
         </form>
       )}
@@ -298,7 +355,6 @@ export default function InventoryPage() {
       {loading && batches.length === 0 ? <div className="p-10 text-center font-medium text-gray-400 animate-pulse text-sm">ĐANG TẢI DỮ LIỆU KHO...</div> : (
         <div className="grid grid-cols-1 gap-6">
           {batches.map((b) => {
-             // GIỮ NGUYÊN CODE TÍNH TOÁN BÊN TRONG MAP
              const diff_xo = Math.round((Number(b.weight_xo || 0) - b.sold_xo) * 1000) / 1000;
              const diff_dep = Math.round((Number(b.weight_dep || 0) - b.sold_dep) * 1000) / 1000;
              const diff_vua = Math.round((Number(b.weight_vua || 0) - b.sold_vua) * 1000) / 1000;
@@ -309,10 +365,8 @@ export default function InventoryPage() {
              return (
               <div key={b.id} className="bg-white p-5 md:p-8 rounded-[24px] border border-gray-200 shadow-sm flex flex-col gap-5 relative group hover:shadow-md transition-shadow">
                 
-                {/* ĐÃ FIX Ở ĐÂY: lg:items-center và phân bổ lg:w-1/3 với lg:w-2/3 để khối dàn đều */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 w-full">
                   
-                  {/* Cột trái: Tên Lô & Nguồn */}
                   <div className="flex flex-row gap-4 items-center w-full lg:w-1/3 border-b border-gray-100 pb-4 lg:border-none lg:pb-0">
                     <div className="w-20 h-20 md:w-24 md:h-24 bg-gray-50 rounded-2xl flex items-center justify-center border border-gray-200 shrink-0 overflow-hidden shadow-sm">
                       {b.image_url ? <img src={b.image_url} alt="Lô hàng" className="w-full h-full object-cover hover:scale-110 transition-transform" /> : <ImageIcon className="text-gray-300" size={32}/>}
@@ -328,21 +382,20 @@ export default function InventoryPage() {
                       </div>
 
                       <div className="flex items-center gap-1.5 mt-1">
-                         <span className="bg-blue-50 text-blue-700 font-bold text-[10px] px-2.5 py-0.5 rounded border border-blue-100">
-                            TB: {Math.round(b.currentAveragePrice).toLocaleString()} đ/kg
+                         <span className="bg-blue-50 text-blue-700 font-bold text-[10px] px-2.5 py-0.5 rounded border border-blue-100 shadow-sm">
+                           TB: {Math.round(b.currentAveragePrice).toLocaleString()} đ/kg
                          </span>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-gray-500 font-medium">
-                          <span>Nhập: <b className="text-gray-900">{new Date(b.purchase_date || b.created_at).toLocaleDateString('vi-VN')}</b></span>
-                          <span>•</span>
-                          <span>Nguồn: <b className="text-blue-600">{b.supplier_name || 'N/A'}</b></span>
-                          {b.has_receipt && <span className="bg-emerald-50 text-emerald-600 px-1.5 rounded border border-emerald-100 flex items-center gap-0.5 text-[10px]"><CheckCircle2 size={10}/> Thuế</span>}
+                         <span>Nhập: <b className="text-gray-900">{new Date(b.purchase_date || b.created_at).toLocaleDateString('vi-VN')}</b></span>
+                         <span>•</span>
+                         <span>Nguồn: <b className="text-blue-600">{b.supplier_name || 'N/A'}</b></span>
+                         {b.has_receipt && <span className="bg-emerald-50 text-emerald-600 px-1.5 rounded border border-emerald-100 flex items-center gap-0.5 text-[10px]"><CheckCircle2 size={10}/> Thuế</span>}
                       </div>
                     </div>
                   </div>
 
-                  {/* Cột phải: 4 thông số (Chia 4 cột trên PC, chia 2 cột trên Điện thoại) */}
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 w-full lg:w-2/3">
                      <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl flex flex-col justify-center">
                         <p className="text-[10px] font-bold uppercase text-blue-500 mb-1">Tồn kho hiện tại</p>
@@ -413,7 +466,6 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* FORM SỬA KHO CẬP NHẬT */}
       {editingBatch && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[24px] p-6 md:p-8 w-full max-w-3xl max-h-[95vh] overflow-y-auto shadow-2xl relative custom-scrollbar">
@@ -433,38 +485,38 @@ export default function InventoryPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-5 rounded-2xl border border-gray-200">
                 <div>
                   <label className="text-xs font-semibold text-gray-600 mb-1 block">Mã Lô</label>
-                  <input required className="w-full border border-gray-300 rounded-xl p-3 font-bold text-sm uppercase outline-none focus:border-blue-500 bg-white" value={editBatchForm.batch_code} onChange={e => setEditBatchForm({...editBatchForm, batch_code: e.target.value})} />
+                  <input required className="w-full border border-gray-300 rounded-xl p-3 font-bold text-sm uppercase outline-none focus:border-blue-500 bg-white shadow-sm" value={editBatchForm.batch_code} onChange={e => setEditBatchForm({...editBatchForm, batch_code: e.target.value})} />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-blue-600 mb-1 flex items-center gap-1"><Calendar size={14}/> Ngày Nhập</label>
-                  <input required type="date" className="w-full border border-blue-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-blue-500 bg-blue-50" value={editBatchForm.purchase_date} onChange={e => setEditBatchForm({...editBatchForm, purchase_date: e.target.value})} />
+                  <input required type="date" className="w-full border border-blue-200 rounded-xl p-3 font-bold text-sm outline-none focus:border-blue-500 bg-blue-50 shadow-sm" value={editBatchForm.purchase_date} onChange={e => setEditBatchForm({...editBatchForm, purchase_date: e.target.value})} />
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-600 mb-1 block">Nguồn nhập</label>
-                  <input required className="w-full border border-gray-300 rounded-xl p-3 text-sm outline-none focus:border-blue-500 bg-white" value={editBatchForm.supplier_name} onChange={e => setEditBatchForm({...editBatchForm, supplier_name: e.target.value})} />
+                  <input required className="w-full border border-gray-300 rounded-xl p-3 font-bold text-sm outline-none focus:border-blue-500 bg-white shadow-sm" value={editBatchForm.supplier_name} onChange={e => setEditBatchForm({...editBatchForm, supplier_name: e.target.value})} />
                 </div>
               </div>
 
               <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
                  <label className="text-xs font-bold uppercase text-gray-800 mb-4 block">Sửa Khối Lượng & Giá Vốn</label>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gray-50 p-3 rounded-xl border border-gray-200">
-                        <span className="text-[10px] font-bold text-gray-500 uppercase block mb-1.5">Hàng Xô</span>
+                    <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 shadow-sm">
+                        <span className="text-[10px] font-bold text-gray-500 uppercase block mb-1.5 text-center">Hàng Xô</span>
                         <input type="text" placeholder="Kg" className="w-full border border-gray-200 rounded-lg p-2 font-bold text-sm text-center outline-none focus:border-blue-400 mb-2" value={editBatchForm.weight_xo} onChange={e => setEditBatchForm({...editBatchForm, weight_xo: e.target.value})} />
                         <input type="number" placeholder="Giá gốc" className="w-full border border-gray-200 rounded-lg p-2 text-xs text-center outline-none focus:border-blue-400" value={editBatchForm.cost_xo} onChange={e => setEditBatchForm({...editBatchForm, cost_xo: e.target.value})} />
                     </div>
-                    <div className="bg-green-50/50 p-3 rounded-xl border border-green-100">
-                        <span className="text-[10px] font-bold text-green-600 uppercase block mb-1.5">Hàng Đẹp</span>
+                    <div className="bg-green-50/50 p-3 rounded-xl border border-green-100 shadow-sm">
+                        <span className="text-[10px] font-bold text-green-600 uppercase block mb-1.5 text-center">Hàng Đẹp</span>
                         <input type="text" placeholder="Kg" className="w-full border border-green-200 rounded-lg p-2 font-bold text-sm text-center outline-none focus:border-green-400 mb-2" value={editBatchForm.weight_dep} onChange={e => setEditBatchForm({...editBatchForm, weight_dep: e.target.value})} />
                         <input type="number" placeholder="Giá gốc" className="w-full border border-green-200 rounded-lg p-2 text-xs text-center outline-none focus:border-green-400" value={editBatchForm.cost_dep} onChange={e => setEditBatchForm({...editBatchForm, cost_dep: e.target.value})} />
                     </div>
-                    <div className="bg-orange-50/50 p-3 rounded-xl border border-orange-100">
-                        <span className="text-[10px] font-bold text-orange-500 uppercase block mb-1.5">Hàng Vừa</span>
+                    <div className="bg-orange-50/50 p-3 rounded-xl border border-orange-100 shadow-sm">
+                        <span className="text-[10px] font-bold text-orange-500 uppercase block mb-1.5 text-center">Hàng Vừa</span>
                         <input type="text" placeholder="Kg" className="w-full border border-orange-200 rounded-lg p-2 font-bold text-sm text-center outline-none focus:border-orange-400 mb-2" value={editBatchForm.weight_vua} onChange={e => setEditBatchForm({...editBatchForm, weight_vua: e.target.value})} />
                         <input type="number" placeholder="Giá gốc" className="w-full border border-orange-200 rounded-lg p-2 text-xs text-center outline-none focus:border-orange-400" value={editBatchForm.cost_vua} onChange={e => setEditBatchForm({...editBatchForm, cost_vua: e.target.value})} />
                     </div>
-                    <div className="bg-red-50/50 p-3 rounded-xl border border-red-100">
-                        <span className="text-[10px] font-bold text-red-500 uppercase block mb-1.5">Hàng Xấu</span>
+                    <div className="bg-red-50/50 p-3 rounded-xl border border-red-100 shadow-sm">
+                        <span className="text-[10px] font-bold text-red-500 uppercase block mb-1.5 text-center">Hàng Xấu</span>
                         <input type="text" placeholder="Kg" className="w-full border border-red-200 rounded-lg p-2 font-bold text-sm text-center outline-none focus:border-red-400 mb-2" value={editBatchForm.weight_xau} onChange={e => setEditBatchForm({...editBatchForm, weight_xau: e.target.value})} />
                         <input type="number" placeholder="Giá gốc" className="w-full border border-red-200 rounded-lg p-2 text-xs text-center outline-none focus:border-red-400" value={editBatchForm.cost_xau} onChange={e => setEditBatchForm({...editBatchForm, cost_xau: e.target.value})} />
                     </div>
@@ -472,12 +524,12 @@ export default function InventoryPage() {
               </div>
               
               <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-gray-100 items-center justify-between">
-                 <label className="flex items-center gap-2 cursor-pointer bg-gray-50 p-3 rounded-xl border hover:bg-gray-100 transition-colors w-full sm:w-auto">
+                 <label className="flex items-center justify-center gap-2 cursor-pointer bg-gray-50 p-3 rounded-xl border hover:bg-gray-100 transition-colors w-full sm:w-auto">
                    <input type="checkbox" className="w-4 h-4 accent-blue-600 rounded" checked={editBatchForm.has_receipt} onChange={e => setEditBatchForm({...editBatchForm, has_receipt: e.target.checked})} />
                    <span className="text-sm font-semibold text-gray-700">Lô này đã khai báo Thuế</span>
                  </label>
                  <div className="flex gap-3 w-full sm:w-auto">
-                    <button type="button" onClick={() => setEditingBatch(null)} className="w-1/3 sm:w-auto px-6 py-3 rounded-xl font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">Hủy</button>
+                    <button type="button" onClick={() => setEditingBatch(null)} className="w-1/3 sm:w-auto px-6 py-3 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">Hủy bỏ</button>
                     <button type="submit" className="w-2/3 sm:w-auto bg-blue-600 text-white font-bold rounded-xl px-8 py-3 shadow-md hover:bg-blue-700 transition-colors">Lưu Gốc Nhập</button>
                  </div>
               </div>
@@ -486,13 +538,12 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* POPUP LỊCH SỬ KÈM NÚT "XÓA ĐỂ HOÀN KHO" */}
       {modalData && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-[24px] p-6 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl relative">
             <button onClick={() => setModalData(null)} className="absolute top-5 right-5 text-gray-400 bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors"><X size={20}/></button>
             <div className="mb-5 pr-8 border-b border-gray-100 pb-4">
-               <h2 className="text-lg font-bold text-gray-900">
+               <h2 className="text-lg font-bold text-gray-900 uppercase">
                   {modalData.type === 'tax' ? 'Lịch sử Thuế' : 
                    modalData.type === 'loss' ? 'Chi tiết hao hụt' :
                    modalData.type === 'revenue' ? 'Doanh thu thu về' :

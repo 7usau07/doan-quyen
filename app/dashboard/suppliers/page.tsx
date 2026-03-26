@@ -153,14 +153,29 @@ export default function SuppliersPage() {
     fetchData();
   }
 
-  // Thuật toán: Cảnh báo nếu > 14 ngày chưa gọi điện
-  const checkNeedsContact = (dateStr: string) => {
-    if (!dateStr) return true;
-    const lastDate = new Date(dateStr);
-    const today = new Date();
-    const diffTime = Math.abs(today.getTime() - lastDate.getTime());
+  // --- BỘ NÃO MỚI: TÍNH NGÀY THÔNG MINH ---
+  // Kết hợp cả ngày gọi điện (trên sổ) và ngày nhập hàng (trong kho)
+  const getLatestActionDate = (sup: any, boughtBatches: any[]) => {
+      // Ngày sếp bấm gọi điện
+      let latestDate = sup.last_contact_date ? new Date(sup.last_contact_date).getTime() : 0;
+      
+      // Tìm ngày nhập hàng gần nhất của người này
+      if (boughtBatches.length > 0) {
+          const latestBatchDate = new Date(boughtBatches[0].purchase_date).getTime();
+          // So sánh, thằng nào mới hơn (gần hôm nay hơn) thì lấy
+          if (latestBatchDate > latestDate) {
+              latestDate = latestBatchDate;
+          }
+      }
+      return latestDate;
+  }
+
+  const checkNeedsContact = (latestDateTimestamp: number) => {
+    if (latestDateTimestamp === 0) return true; // Chưa từng gọi, chưa từng nhập hàng
+    const today = new Date().getTime();
+    const diffTime = Math.abs(today - latestDateTimestamp);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 14; 
+    return diffDays > 14; // Hơn 14 ngày là báo đỏ (sửa lại > 14 cho chuẩn)
   }
 
   const filteredSuppliers = suppliers.filter(s => {
@@ -249,10 +264,16 @@ export default function SuppliersPage() {
       {loading ? <div className="text-center font-bold text-gray-400 py-10 animate-pulse">ĐANG TẢI & DỌN DẸP DANH BẠ NHÀ YẾN...</div> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredSuppliers.map(sup => {
-            const needsContact = checkNeedsContact(sup.last_contact_date);
-            // Tìm lịch sử mua của người này trong bảng Kho (batches)
-            const boughtBatches = batches.filter(b => b.supplier_name && b.supplier_name.toLowerCase().includes(sup.name.toLowerCase()));
+            // Lấy ra tất cả các lô đã nhập của người này và sắp xếp mới nhất lên đầu
+            const boughtBatches = batches
+                .filter(b => b.supplier_name && b.supplier_name.toLowerCase().includes(sup.name.toLowerCase()))
+                .sort((a, b) => new Date(b.purchase_date).getTime() - new Date(a.purchase_date).getTime());
+            
             const totalKgBought = boughtBatches.reduce((sum, b) => sum + Number(b.total_weight || 0), 0);
+
+            // BỘ NÃO TÍNH NGÀY ĐÃ ĐƯỢC KÍCH HOẠT TẠI ĐÂY
+            const latestTimestamp = getLatestActionDate(sup, boughtBatches);
+            const needsContact = checkNeedsContact(latestTimestamp);
 
             return (
               <div key={sup.id} className={`bg-white rounded-[24px] border ${needsContact ? 'border-red-300 shadow-red-100/50' : 'border-gray-200'} shadow-sm overflow-hidden flex flex-col relative`}>
