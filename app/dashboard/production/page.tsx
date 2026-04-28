@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Calculator, ArrowRight, Droplet, Users, Target, Package, DollarSign, Info, CheckSquare, Layers } from 'lucide-react'
+import { Calculator, ArrowRight, Droplet, Users, Target, Package, DollarSign, Info, Layers, PlusCircle, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function ProductionPage() {
@@ -10,10 +10,12 @@ export default function ProductionPage() {
   const [loading, setLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
 
-  // FORM NHẬP LIỆU GIA CÔNG (ĐÃ HỖ TRỢ XUẤT NHIỀU LOẠI CÙNG LÚC)
+  // CHUYỂN FORM THÀNH MẢNG ĐỂ TRỘN NHIỀU LÔ (MIXER)
+  const [mixItems, setMixItems] = useState([
+    { id: Date.now(), batch_id: '', grade_type: '', weight_used: '' }
+  ])
+
   const [form, setForm] = useState({
-    batch_id: '',
-    wXo: '', wDep: '', wVua: '', wXau: '', // Trọng lượng xuất của từng loại
     refinedWeight: '',
     laborCost: '',
     utilityCost: '',
@@ -59,91 +61,136 @@ export default function ProductionPage() {
       return Number(batch.cost_per_kg || 0);
   }
 
-  // Khi sếp đổi lô, reset lại hết các số kg đã nhập
-  const handleBatchChange = (batchId: string) => {
-      setForm({...form, batch_id: batchId, wXo: '', wDep: '', wVua: '', wXau: ''});
+  const getRemainForGrade = (batch: any, grade: string) => {
+      if (!batch) return 0;
+      if (grade === 'Xô') return batch.remain_xo;
+      if (grade === 'Đẹp') return batch.remain_dep;
+      if (grade === 'Vừa') return batch.remain_vua;
+      if (grade === 'Xấu') return batch.remain_xau;
+      return batch.remain;
   }
 
-  // Chọn vét sạch kho của lô đó để làm
-  const handleSelectAllRawWeight = () => {
-      const selectedBatch = batches.find(b => b.id === form.batch_id);
-      if (selectedBatch) {
-          setForm({
-              ...form, 
-              wXo: selectedBatch.remain_xo > 0 ? selectedBatch.remain_xo.toString() : '',
-              wDep: selectedBatch.remain_dep > 0 ? selectedBatch.remain_dep.toString() : '',
-              wVua: selectedBatch.remain_vua > 0 ? selectedBatch.remain_vua.toString() : '',
-              wXau: selectedBatch.remain_xau > 0 ? selectedBatch.remain_xau.toString() : ''
-          });
+  // --- CÁC HÀM XỬ LÝ TRỘN LÔ ---
+  const handleAddMixItem = () => {
+      setMixItems([...mixItems, { id: Date.now(), batch_id: '', grade_type: '', weight_used: '' }]);
+  }
+
+  const handleRemoveMixItem = (idToRemove: number) => {
+      if (mixItems.length === 1) {
+          alert("Phải có ít nhất 1 nguồn nguyên liệu chứ sếp!"); return;
       }
+      setMixItems(mixItems.filter(item => item.id !== idToRemove));
   }
 
-  // --- LOGIC TÍNH TOÁN GIÁ VỐN TRỘN HỖN HỢP ---
+  const updateMixItem = (id: number, field: string, value: string) => {
+      setMixItems(mixItems.map(item => {
+          if (item.id === id) {
+              const updatedItem = { ...item, [field]: value };
+              // Nếu đổi lô mới, chọn luôn phân loại đầu tiên còn hàng và xoá số kg cũ
+              if (field === 'batch_id') {
+                  const b = batches.find(x => x.id === value);
+                  if (b) {
+                      if (b.remain_xo > 0) updatedItem.grade_type = 'Xô';
+                      else if (b.remain_dep > 0) updatedItem.grade_type = 'Đẹp';
+                      else if (b.remain_vua > 0) updatedItem.grade_type = 'Vừa';
+                      else if (b.remain_xau > 0) updatedItem.grade_type = 'Xấu';
+                  }
+                  updatedItem.weight_used = '';
+              }
+              // Nếu đổi loại, xoá số kg cũ
+              if (field === 'grade_type') {
+                  updatedItem.weight_used = '';
+              }
+              return updatedItem;
+          }
+          return item;
+      }));
+  }
+
+  const handleMaxWeight = (id: number) => {
+      setMixItems(mixItems.map(item => {
+          if (item.id === id && item.batch_id && item.grade_type) {
+              const b = batches.find(x => x.id === item.batch_id);
+              const maxVal = getRemainForGrade(b, item.grade_type);
+              return { ...item, weight_used: maxVal.toString() };
+          }
+          return item;
+      }));
+  }
+
+  // --- LOGIC TÍNH TOÁN GIÁ VỐN TRỘN HỖN HỢP TỪ NHIỀU LÔ ---
   const calculations = useMemo(() => {
-    const selectedBatch = batches.find(b => b.id === form.batch_id)
-    
-    const wXo = Math.abs(Number(form.wXo) || 0)
-    const wDep = Math.abs(Number(form.wDep) || 0)
-    const wVua = Math.abs(Number(form.wVua) || 0)
-    const wXau = Math.abs(Number(form.wXau) || 0)
-    
-    // TỔNG KG THÔ LẤY RA
-    const totalRawWeight = wXo + wDep + wVua + wXau
+    let totalRawWeight = 0;
+    let totalRawCost = 0;
+
+    mixItems.forEach(item => {
+        if (item.batch_id && item.weight_used) {
+            const batch = batches.find(b => b.id === item.batch_id);
+            const weight = Math.abs(Number(item.weight_used) || 0);
+            if (batch && weight > 0) {
+                totalRawWeight += weight;
+                // Cộng dồn Vốn (Khối lượng * Giá vốn của loại đó trong lô đó)
+                totalRawCost += weight * getCostForGrade(batch, item.grade_type);
+            }
+        }
+    });
 
     const refinedWeight = Math.abs(Number(form.refinedWeight) || 0)
     const labor = Math.abs(Number(form.laborCost) || 0)
     const utility = Math.abs(Number(form.utilityCost) || 0)
     const targetProfit = Math.abs(Number(form.targetProfit100g) || 0)
 
-    // 1. TỔNG VỐN CỦA MỚ YẾN HỖN HỢP NÀY
-    let totalRawCost = 0;
-    if (selectedBatch) {
-        totalRawCost += wXo * getCostForGrade(selectedBatch, 'Xô');
-        totalRawCost += wDep * getCostForGrade(selectedBatch, 'Đẹp');
-        totalRawCost += wVua * getCostForGrade(selectedBatch, 'Vừa');
-        totalRawCost += wXau * getCostForGrade(selectedBatch, 'Xấu');
-    }
-
-    // 2. Tỷ lệ hao hụt
+    // Tỷ lệ hao hụt
     const shrinkageKg = totalRawWeight - refinedWeight
     const shrinkagePercent = totalRawWeight > 0 ? (shrinkageKg / totalRawWeight) * 100 : 0
 
-    // 3. Tổng chi phí sản xuất mẻ này
+    // Tổng chi phí sản xuất mẻ này
     const totalProductionCost = totalRawCost + labor + utility
 
-    // 4. GIÁ VỐN TINH CHẾ MỚI
+    // GIÁ VỐN TINH CHẾ MỚI
     const newCostPerKg = refinedWeight > 0 ? (totalProductionCost / refinedWeight) : 0
     const newCostPer100g = newCostPerKg / 10
 
-    // 5. GIÁ BÁN ĐỀ XUẤT 
+    // GIÁ BÁN ĐỀ XUẤT 
     const minSellPrice100g = newCostPer100g + targetProfit
     const minSellPriceKg = minSellPrice100g * 10
 
     return {
-      selectedBatch, totalRawWeight, totalRawCost, shrinkageKg, shrinkagePercent,
-      totalProductionCost, newCostPerKg, newCostPer100g, minSellPrice100g, minSellPriceKg,
-      wXo, wDep, wVua, wXau
+      totalRawWeight, totalRawCost, shrinkageKg, shrinkagePercent,
+      totalProductionCost, newCostPerKg, newCostPer100g, minSellPrice100g, minSellPriceKg
     }
-  }, [form, batches])
+  }, [mixItems, form, batches])
 
-  // --- HÀM XUẤT KHO & NHẬP KHO TINH CHẾ ---
+  // --- HÀM XUẤT KHO & NHẬP KHO TINH CHẾ TỪ MẢNG MIX ---
   const handleFinalizeProduction = async () => {
-    if (!form.batch_id || calculations.totalRawWeight <= 0 || !form.refinedWeight) {
-      alert("Sếp phải nhập số Kg xuất và Số Kg thành phẩm thu về nhé!"); return;
+    // Lọc ra những thành phần có nhập đủ thông tin
+    const validItems = mixItems.filter(item => item.batch_id && Number(item.weight_used) > 0);
+
+    if (validItems.length === 0 || !form.refinedWeight) {
+      alert("Sếp phải chọn ít nhất 1 lô xuất đi và nhập Số Kg thành phẩm thu về nhé!"); return;
     }
     
-    // Validate không cho xuất lố từng loại
-    const b = calculations.selectedBatch;
-    if (calculations.wXo > b.remain_xo + 0.0001) { alert(`Hàng Xô chỉ còn ${b.remain_xo}kg, không thể xuất lố!`); return; }
-    if (calculations.wDep > b.remain_dep + 0.0001) { alert(`Hàng Đẹp chỉ còn ${b.remain_dep}kg, không thể xuất lố!`); return; }
-    if (calculations.wVua > b.remain_vua + 0.0001) { alert(`Hàng Vừa chỉ còn ${b.remain_vua}kg, không thể xuất lố!`); return; }
-    if (calculations.wXau > b.remain_xau + 0.0001) { alert(`Hàng Xấu chỉ còn ${b.remain_xau}kg, không thể xuất lố!`); return; }
-
-    if (calculations.shrinkageKg < 0) {
-      alert("Vô lý! Số kg tinh chế thu về không thể lớn hơn số kg thô xuất ra được."); return;
+    // Validate không cho xuất lố kho
+    for (const item of validItems) {
+        const b = batches.find(x => x.id === item.batch_id);
+        const maxRemain = getRemainForGrade(b, item.grade_type);
+        if (Number(item.weight_used) > maxRemain + 0.0001) {
+            alert(`Lô ${b.batch_code} loại ${item.grade_type} chỉ còn ${maxRemain}kg, không thể xuất lố ${item.weight_used}kg!`);
+            return;
+        }
     }
 
-    if (!window.confirm(`Xác nhận chốt mẻ này?\nHệ thống sẽ trừ tổng cộng ${calculations.totalRawWeight}kg từ kho và đẻ ra lô Tinh Chế mới.`)) return;
+    if (calculations.shrinkageKg < 0) {
+      alert("Vô lý! Số kg tinh chế thu về không thể lớn hơn tổng số kg thô xuất ra được."); return;
+    }
+
+    // Gộp tên các lô lại làm Ghi chú cho dễ nhớ
+    const batchCodesUsed = Array.from(new Set(validItems.map(i => {
+        const b = batches.find(x => x.id === i.batch_id);
+        return b?.batch_code;
+    }))).join(', ');
+
+    if (!window.confirm(`Xác nhận chốt mẻ này?\nHệ thống sẽ trừ tổng cộng ${calculations.totalRawWeight}kg từ các lô ${batchCodesUsed} và tạo ra 1 Lô Tinh Chế mới.`)) return;
 
     setIsProcessing(true)
     try {
@@ -154,37 +201,35 @@ export default function ProductionPage() {
         sysCustId = newCust?.id
       }
 
-      // XUẤT ĐƠN CHO TỪNG LOẠI ĐỂ TRỪ KHO CHUẨN XÁC
-      const orderPromises = [];
-      const createInternalOrder = (grade: string, weight: number, costPerKg: number) => {
+      // XUẤT ĐƠN CHO TỪNG ITEM MIX ĐỂ TRỪ KHO CHUẨN XÁC
+      const orderPromises = validItems.map(item => {
+          const b = batches.find(x => x.id === item.batch_id);
+          const weight = Number(item.weight_used);
+          const costPerKg = getCostForGrade(b, item.grade_type);
+
           return supabase.from('orders').insert([{
-            customer_id: sysCustId, batch_id: form.batch_id, grade_type: grade, 
+            customer_id: sysCustId, batch_id: item.batch_id, grade_type: item.grade_type, 
             weight: weight, cost: weight * costPerKg, revenue: weight * costPerKg, 
             profit: 0, status: 'Hoàn tất',
-            note: `Gia công từ ${grade}. Thu về tổng ${form.refinedWeight}kg.`,
+            note: `Gia công từ loại ${item.grade_type}. Nằm trong mẻ trộn chung thu về ${form.refinedWeight}kg.`,
             created_at: new Date().toISOString()
           }]);
-      }
+      });
 
-      if (calculations.wXo > 0) orderPromises.push(createInternalOrder('Xô', calculations.wXo, getCostForGrade(b, 'Xô')));
-      if (calculations.wDep > 0) orderPromises.push(createInternalOrder('Đẹp', calculations.wDep, getCostForGrade(b, 'Đẹp')));
-      if (calculations.wVua > 0) orderPromises.push(createInternalOrder('Vừa', calculations.wVua, getCostForGrade(b, 'Vừa')));
-      if (calculations.wXau > 0) orderPromises.push(createInternalOrder('Xấu', calculations.wXau, getCostForGrade(b, 'Xấu')));
-
-      await Promise.all(orderPromises); // Thực thi trừ kho cùng lúc
+      await Promise.all(orderPromises); 
 
       // Tạo Lô Tinh Chế Mới
       await supabase.from('batches').insert([{
-        batch_code: `TC-${b.batch_code}`, 
+        batch_code: `TC-${Date.now().toString().slice(-6)}`, // Tự sinh mã random vì trộn nhiều lô
         total_weight: Math.abs(Number(form.refinedWeight)),
         weight_dep: Math.abs(Number(form.refinedWeight)), 
         weight_xo: 0, weight_vua: 0, weight_xau: 0,
         cost_per_kg: calculations.newCostPerKg, 
-        supplier_name: `Gia công hỗn hợp từ lô ${b.batch_code}`,
+        supplier_name: `Gia công hỗn hợp từ các lô: ${batchCodesUsed}`,
         purchase_date: new Date().toISOString().split('T')[0]
       }])
 
-      alert("🎉 Đã chốt gia công thành công! Kho đã trừ đúng các loại, không bị âm!")
+      alert("🎉 Đã chốt gia công thành công! Kho đã trừ đúng các loại, đẻ lô Tinh chế mới!")
       router.push('/dashboard/inventory')
     } catch (error) {
       alert("Có lỗi hệ thống khi lưu mẻ gia công!");
@@ -211,64 +256,52 @@ export default function ProductionPage() {
         {/* KHU VỰC NHẬP LIỆU (CỘT TRÁI) */}
         <div className="lg:col-span-5 space-y-5 md:space-y-6">
            
-           {/* BƯỚC 1 */}
+           {/* BƯỚC 1: BỘ TRỘN ĐA NĂNG */}
            <div className="bg-white p-5 md:p-6 rounded-[24px] border border-gray-200 shadow-sm space-y-4 md:space-y-5">
-              <h3 className="font-bold uppercase text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3 text-sm md:text-base"><Package className="text-blue-500" size={18}/> 1. Xuất Nguyên Liệu Trộn</h3>
-              
-              <div>
-                <label className="text-[10px] md:text-xs font-bold uppercase text-gray-500 mb-1 block ml-1">Lấy nguyên liệu từ lô nào?</label>
-                <select className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-semibold text-gray-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all text-sm md:text-base" value={form.batch_id} onChange={e => handleBatchChange(e.target.value)}>
-                  <option value="">-- Chọn lô kho --</option>
-                  {batches.map(b => (
-                     <option key={b.id} value={b.id}>
-                        {b.batch_code} (Tổng tồn: {b.remain.toFixed(3)}kg)
-                     </option>
-                  ))}
-                </select>
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                 <h3 className="font-bold uppercase text-gray-900 flex items-center gap-2 text-sm md:text-base"><Package className="text-blue-500" size={18}/> 1. Nguồn Gốc Yến</h3>
+                 <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded font-bold text-gray-500 uppercase">{mixItems.length} nguồn</span>
               </div>
 
-              {/* BỘ TRỘN YẾN NHIỀU LOẠI */}
-              {calculations.selectedBatch && (
-                <div className="mt-4 p-4 bg-orange-50/50 border border-orange-200 rounded-2xl space-y-3">
-                  <div className="flex justify-between items-end mb-2">
-                      <label className="text-[10px] md:text-xs font-bold uppercase text-orange-700 flex items-center gap-1.5"><Layers size={14}/> Bốc loại nào đem làm?</label>
-                      <button type="button" onClick={handleSelectAllRawWeight} className="text-[9px] md:text-[10px] bg-orange-500 text-white hover:bg-orange-600 font-black uppercase px-2 py-1 rounded-md transition-colors flex items-center gap-1 shadow-sm">
-                          <CheckSquare size={12}/> Vét Sạch Lô
-                      </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    {calculations.selectedBatch.remain_xo > 0 && (
-                       <div>
-                          <span className="text-[10px] font-bold text-gray-500 block mb-1">Xô Zin (Còn {calculations.selectedBatch.remain_xo.toFixed(3)}kg)</span>
-                          <input type="number" step="0.001" placeholder="Số kg" className="w-full border border-orange-200 rounded-xl p-2.5 outline-none font-bold text-orange-800 focus:border-orange-500 bg-white" value={form.wXo} onChange={e => setForm({...form, wXo: e.target.value})}/>
-                       </div>
-                    )}
-                    {calculations.selectedBatch.remain_dep > 0 && (
-                       <div>
-                          <span className="text-[10px] font-bold text-gray-500 block mb-1">Hàng Đẹp (Còn {calculations.selectedBatch.remain_dep.toFixed(3)}kg)</span>
-                          <input type="number" step="0.001" placeholder="Số kg" className="w-full border border-orange-200 rounded-xl p-2.5 outline-none font-bold text-orange-800 focus:border-orange-500 bg-white" value={form.wDep} onChange={e => setForm({...form, wDep: e.target.value})}/>
-                       </div>
-                    )}
-                    {calculations.selectedBatch.remain_vua > 0 && (
-                       <div>
-                          <span className="text-[10px] font-bold text-gray-500 block mb-1">Hàng Vừa (Còn {calculations.selectedBatch.remain_vua.toFixed(3)}kg)</span>
-                          <input type="number" step="0.001" placeholder="Số kg" className="w-full border border-orange-200 rounded-xl p-2.5 outline-none font-bold text-orange-800 focus:border-orange-500 bg-white" value={form.wVua} onChange={e => setForm({...form, wVua: e.target.value})}/>
-                       </div>
-                    )}
-                    {calculations.selectedBatch.remain_xau > 0 && (
-                       <div>
-                          <span className="text-[10px] font-bold text-gray-500 block mb-1">Hàng Xấu (Còn {calculations.selectedBatch.remain_xau.toFixed(3)}kg)</span>
-                          <input type="number" step="0.001" placeholder="Số kg" className="w-full border border-orange-200 rounded-xl p-2.5 outline-none font-bold text-orange-800 focus:border-orange-500 bg-white" value={form.wXau} onChange={e => setForm({...form, wXau: e.target.value})}/>
-                       </div>
-                    )}
-                  </div>
-                  
-                  <div className="text-right text-[11px] font-bold text-gray-500 mt-2 border-t border-orange-200/50 pt-2">
-                     Tổng xuất: <span className="text-orange-600 text-sm md:text-base font-black">{calculations.totalRawWeight.toFixed(3)} kg</span>
-                  </div>
-                </div>
-              )}
+              {mixItems.map((item, index) => {
+                 const currentBatch = batches.find(b => b.id === item.batch_id);
+                 return (
+                    <div key={item.id} className="p-3 bg-gray-50/80 border border-gray-200 rounded-2xl relative group">
+                        {mixItems.length > 1 && (
+                            <button onClick={() => handleRemoveMixItem(item.id)} className="absolute -top-2 -right-2 bg-white text-red-500 p-1 rounded-full border border-gray-200 shadow-sm hover:bg-red-50 hover:border-red-200 transition-colors z-10"><Trash2 size={12}/></button>
+                        )}
+                        <div className="flex flex-col gap-2 mb-2">
+                           <select className="w-full bg-white border border-gray-200 rounded-xl p-2.5 font-bold text-gray-900 text-xs md:text-sm outline-none focus:border-blue-400 cursor-pointer" value={item.batch_id} onChange={e => updateMixItem(item.id, 'batch_id', e.target.value)}>
+                              <option value="">-- Lấy từ lô nào? --</option>
+                              {batches.map(b => (
+                                 <option key={b.id} value={b.id}>{b.batch_code} (Còn: {b.remain.toFixed(2)}kg)</option>
+                              ))}
+                           </select>
+                           <div className="flex gap-2">
+                               <select className="flex-1 bg-white border border-gray-200 rounded-xl p-2.5 font-bold text-gray-700 text-xs outline-none disabled:opacity-50 cursor-pointer" value={item.grade_type} onChange={e => updateMixItem(item.id, 'grade_type', e.target.value)} disabled={!item.batch_id}>
+                                  <option value="Xô" disabled={currentBatch && currentBatch.remain_xo <= 0}>Xô Zin</option>
+                                  <option value="Đẹp" disabled={currentBatch && currentBatch.remain_dep <= 0}>Đẹp</option>
+                                  <option value="Vừa" disabled={currentBatch && currentBatch.remain_vua <= 0}>Vừa</option>
+                                  <option value="Xấu" disabled={currentBatch && currentBatch.remain_xau <= 0}>Xấu</option>
+                               </select>
+                               <div className="flex-1 relative">
+                                  <input type="number" step="0.001" placeholder="Số Kg Xuất..." className="w-full border border-orange-300 rounded-xl p-2.5 outline-none font-bold text-orange-700 text-xs bg-orange-50 focus:border-orange-500 pr-10" value={item.weight_used} onChange={e => updateMixItem(item.id, 'weight_used', e.target.value)} disabled={!item.batch_id}/>
+                                  <button onClick={() => handleMaxWeight(item.id)} disabled={!item.batch_id} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[8px] bg-orange-200 hover:bg-orange-300 text-orange-800 font-bold px-1.5 py-1 rounded disabled:opacity-50 transition-colors">Vét</button>
+                               </div>
+                           </div>
+                        </div>
+                        {item.batch_id && item.grade_type && (
+                            <div className="text-right text-[9px] text-gray-400 font-medium">Kho loại này còn: <b className="text-gray-600">{getRemainForGrade(currentBatch, item.grade_type).toFixed(3)}kg</b></div>
+                        )}
+                    </div>
+                 )
+              })}
+
+              <button type="button" onClick={handleAddMixItem} className="w-full border border-dashed border-blue-300 text-blue-600 bg-blue-50/50 hover:bg-blue-50 p-2.5 rounded-xl flex justify-center items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] transition-colors"><PlusCircle size={14}/> Trộn Thêm Lô Khác</button>
+
+              <div className="text-right text-[11px] font-bold text-gray-500 mt-2 border-t border-gray-100 pt-3">
+                 TỔNG LƯỢNG YẾN ĐEM TRỘN: <span className="text-blue-600 text-base md:text-lg font-black ml-1">{calculations.totalRawWeight.toFixed(3)} kg</span>
+              </div>
            </div>
 
            {/* BƯỚC 2 */}

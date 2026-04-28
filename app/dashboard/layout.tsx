@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { 
   LayoutDashboard, ShoppingCart, Users, LineChart, LogOut, 
   Package, Map, Landmark, ShieldCheck, Calculator, Factory,
-  Menu, X, Brain
+  Menu, X
 } from 'lucide-react'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -50,6 +50,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/login')
   }
 
+  // ĐÃ XÓA MỤC "GIÁM ĐỐC AI" KHỎI DANH SÁCH MENU
   const menuItems = [
     { name: 'Tổng quan', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Kho & Lô Hàng', href: '/dashboard/inventory', icon: Package },
@@ -59,7 +60,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { name: 'Đơn hàng', href: '/dashboard/orders', icon: ShoppingCart },
     { name: 'Khách hàng', href: '/dashboard/customers', icon: Users },
     { name: 'Lợi nhuận', href: '/dashboard/profit', icon: LineChart },
-    { name: 'Giám Đốc AI', href: '/dashboard/ai', icon: Brain }, // ĐÃ THÊM MỤC AI VÀO ĐÂY
     { name: 'Sổ Công Nợ', href: '/dashboard/debts', icon: Landmark }, 
   ]
 
@@ -112,7 +112,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {menuItems.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
-            const isAI = item.name === 'Giám Đốc AI'; // Đánh dấu riêng nút AI
             
             return (
               <Link 
@@ -120,12 +119,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 href={item.href}
                 className={`flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-sm transition-all ${
                   isActive 
-                  ? (isAI ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/30 md:scale-[1.02]' : 'bg-blue-600 text-white shadow-lg shadow-blue-900/20 md:scale-[1.02]')
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20 md:scale-[1.02]'
                   : 'text-gray-400 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                {/* Nếu là nút AI thì cho icon sáng lên xíu */}
-                <Icon size={20} className={isAI && !isActive ? "text-blue-400" : ""} />
+                <Icon size={20} />
                 {item.name}
               </Link>
             )

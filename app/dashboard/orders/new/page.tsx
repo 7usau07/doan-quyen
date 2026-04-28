@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, MapPin, Calendar, Package, ListFilter, PlusCircle, Trash2, ShoppingCart, CheckCircle2, UserCircle2, Sparkles } from 'lucide-react' 
+import { ArrowLeft, MapPin, Calendar, Package, ListFilter, PlusCircle, Trash2, ShoppingCart, CheckCircle2, UserCircle2, Sparkles, AlertCircle } from 'lucide-react' 
 
 async function getCoords(address: string) {
   try {
@@ -26,6 +26,9 @@ export default function NewOrderPage() {
   const [activeBatches, setActiveBatches] = useState<any[]>([]) 
   const [showDropdown, setShowDropdown] = useState(false)
 
+  // THÊM STATE ĐỂ CHẠY THÔNG BÁO NỔI (TOAST)
+  const [toast, setToast] = useState({ visible: false, message: '' })
+
   const [orderCategory, setOrderCategory] = useState<'tinh_che' | 'yen_tho'>('tinh_che')
 
   const [customerType, setCustomerType] = useState('khach_le')
@@ -38,6 +41,12 @@ export default function NewOrderPage() {
   const [cartItems, setCartItems] = useState<any[]>([
     { id: Date.now(), batch_id: '', grade_type: '', weight: '', priceInput: '', unitCost: '' }
   ])
+
+  // HÀM GỌI THÔNG BÁO NỔI CHUẨN APP (TỰ TẮT SAU 3 GIÂY)
+  const showToast = (msg: string) => {
+     setToast({ visible: true, message: msg });
+     setTimeout(() => setToast({ visible: false, message: '' }), 3000);
+  }
 
   useEffect(() => {
     async function fetchData() {
@@ -88,6 +97,15 @@ export default function NewOrderPage() {
     return Number(batch.cost_per_kg || 0);
   }
 
+  const getMaxWeightForGrade = (batch: any, grade: string) => {
+    if (!batch) return 0;
+    if (grade === 'Xô') return batch.remain_xo;
+    if (grade === 'Đẹp') return batch.remain_dep;
+    if (grade === 'Vừa') return batch.remain_vua;
+    if (grade === 'Xấu') return batch.remain_xau;
+    return batch.total_remain; 
+  }
+
   const handleBatchChange = (itemId: number, batchId: string) => {
     const selectedBatch = displayBatches.find(b => b.id === batchId);
     let firstAvailableGrade = ''; 
@@ -99,7 +117,7 @@ export default function NewOrderPage() {
     }
 
     setCartItems(prev => prev.map(item => {
-      if (item.id === itemId) return { ...item, batch_id: batchId, grade_type: firstAvailableGrade, unitCost: selectedBatch ? Math.round(getCostForGrade(selectedBatch, firstAvailableGrade)).toString() : '' }
+      if (item.id === itemId) return { ...item, batch_id: batchId, grade_type: firstAvailableGrade, unitCost: selectedBatch ? Math.round(getCostForGrade(selectedBatch, firstAvailableGrade)).toString() : '', weight: '' } 
       return item;
     }))
   }
@@ -108,7 +126,27 @@ export default function NewOrderPage() {
     setCartItems(prev => prev.map(item => {
       if (item.id === itemId) {
         const selectedBatch = displayBatches.find(b => b.id === item.batch_id);
-        return { ...item, grade_type: grade, unitCost: selectedBatch ? Math.round(getCostForGrade(selectedBatch, grade)).toString() : '' }
+        return { ...item, grade_type: grade, unitCost: selectedBatch ? Math.round(getCostForGrade(selectedBatch, grade)).toString() : '', weight: '' } 
+      }
+      return item;
+    }))
+  }
+
+  const handleWeightChange = (itemId: number, rawValue: string) => {
+    setCartItems(prev => prev.map(item => {
+      if (item.id === itemId) {
+        const selectedBatch = displayBatches.find(b => b.id === item.batch_id);
+        const maxAllowed = getMaxWeightForGrade(selectedBatch, item.grade_type);
+        
+        let valNum = parseFloat(rawValue);
+        
+        // KIỂM TRA QUÁ SỐ KÝ VÀ BẬT THÔNG BÁO NỔI THAY VÌ ALERT
+        if (!isNaN(valNum) && valNum > maxAllowed) {
+            showToast(`Kho chỉ còn tối đa ${maxAllowed.toFixed(3)}kg. Hệ thống đã tự động gán cứng!`);
+            return { ...item, weight: maxAllowed.toString() };
+        }
+        
+        return { ...item, weight: rawValue };
       }
       return item;
     }))
@@ -120,7 +158,7 @@ export default function NewOrderPage() {
 
   const handleRemoveItem = (idToRemove: number) => {
     if (cartItems.length === 1) {
-      alert("Đơn hàng phải có ít nhất 1 sản phẩm chứ sếp!"); return;
+      showToast("Đơn hàng phải có ít nhất 1 sản phẩm chứ!"); return;
     }
     setCartItems(cartItems.filter(item => item.id !== idToRemove));
   }
@@ -129,24 +167,18 @@ export default function NewOrderPage() {
     setCartItems(prev => prev.map(item => item.id === itemId ? { ...item, [field]: value } : item))
   }
 
-  // --- CÔNG THỨC TÍNH TIỀN CHUẨN ĐÃ FIX KHỐI LƯỢNG LÀ KG ---
   const calculateTotals = () => {
     let totalCost = 0; let totalRevenue = 0;
     cartItems.forEach(item => {
-      // Sếp gõ 0.1 nghĩa là 0.1 Kg
       const weightKg = Number(item.weight) || 0; 
       const costPerKg = Number(item.unitCost) || 0;
       
-      // Vốn lúc nào cũng = Kg * Giá 1 Kg
       totalCost += weightKg * costPerKg;
       
       const inputPrice = Number(item.priceInput) || 0;
       if (orderCategory === 'tinh_che') {
-         // Tinh chế: Bán 0.1kg (1 Lạng), Giá bán là giá của 1 Lạng
-         // Doanh thu = 0.1kg * 10 * Giá 1 Lạng = 1 * Giá 1 Lạng
          totalRevenue += (weightKg * 10) * inputPrice;
       } else {
-         // Yến thô: Bán theo Kg
          totalRevenue += weightKg * inputPrice;
       }
     });
@@ -165,7 +197,7 @@ export default function NewOrderPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const invalidItems = cartItems.filter(item => !item.batch_id || !item.weight || !item.priceInput);
-    if (invalidItems.length > 0) { alert("Vui lòng điền đủ thông tin Sản Phẩm trước khi chốt!"); return; }
+    if (invalidItems.length > 0) { showToast("Vui lòng điền đủ thông tin Sản Phẩm trước khi chốt!"); return; }
 
     setLoading(true)
     try {
@@ -183,7 +215,6 @@ export default function NewOrderPage() {
       for (let i = 0; i < cartItems.length; i++) {
         const item = cartItems[i];
         
-        // Database luôn lưu trọng lượng là Kg để thống nhất kho
         const weightKg = Number(item.weight); 
         
         const itemCost = Math.round(weightKg * Number(item.unitCost));
@@ -221,6 +252,15 @@ export default function NewOrderPage() {
 
   return (
     <div className="p-3 md:p-8 max-w-3xl mx-auto bg-gray-50 min-h-screen relative pb-20 animate-in fade-in">
+      
+      {/* KHUNG THÔNG BÁO NỔI (TOAST) CỰC XỊN SÒ DÀNH CHO MOBILE */}
+      {toast.visible && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] bg-gray-900/95 backdrop-blur-md text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-5 fade-in duration-300 w-[90%] max-w-sm border border-gray-700">
+           <AlertCircle size={20} className="text-orange-400 shrink-0"/>
+           <span className="text-xs md:text-sm font-bold leading-snug">{toast.message}</span>
+        </div>
+      )}
+
       <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-400 hover:text-black mb-4 transition-colors font-bold uppercase text-[10px] md:text-xs"><ArrowLeft size={14} /> Quay lại</button>
       
       <div className="mb-6 text-center">
@@ -293,8 +333,8 @@ export default function NewOrderPage() {
 
            {cartItems.map((item) => {
               const currentBatch = displayBatches.find(b => b.id === item.batch_id);
+              const maxVal = getMaxWeightForGrade(currentBatch, item.grade_type);
               
-              // Tính toán động để hiển thị UI
               const itemRev = orderCategory === 'tinh_che' 
                 ? (Number(item.weight) * 10) * Number(item.priceInput)
                 : Number(item.weight) * Number(item.priceInput);
@@ -310,7 +350,7 @@ export default function NewOrderPage() {
                             </label>
                             <select required className="bg-gray-50 border border-gray-200 rounded-lg p-2 font-bold text-gray-900 outline-none w-full text-xs cursor-pointer focus:border-gray-400" value={item.batch_id} onChange={(e) => handleBatchChange(item.id, e.target.value)}>
                                <option value="">-- Bấm chọn mã lô --</option>
-                               {displayBatches.map(b => (<option key={b.id} value={b.id}>{b.batch_code} (Còn: Xô {b.remain_xo > 0 ? b.remain_xo.toFixed(1) : 0} | Đẹp {b.remain_dep > 0 ? b.remain_dep.toFixed(1) : 0} | Vừa {b.remain_vua > 0 ? b.remain_vua.toFixed(1) : 0} | Xấu {b.remain_xau > 0 ? b.remain_xau.toFixed(1) : 0})</option>))}
+                               {displayBatches.map(b => (<option key={b.id} value={b.id}>{b.batch_code} (Còn: Xô {b.remain_xo > 0 ? b.remain_xo.toFixed(2) : 0} | Đẹp {b.remain_dep > 0 ? b.remain_dep.toFixed(2) : 0} | Vừa {b.remain_vua > 0 ? b.remain_vua.toFixed(2) : 0} | Xấu {b.remain_xau > 0 ? b.remain_xau.toFixed(2) : 0})</option>))}
                             </select>
                         </div>
                         <div className="flex-1 flex flex-col gap-1">
@@ -329,8 +369,16 @@ export default function NewOrderPage() {
                           <label className="text-[8px] md:text-[9px] font-bold uppercase text-gray-600 mb-1 block text-center truncate">
                               {orderCategory === 'tinh_che' ? 'SỐ KG (0.1 = 1 Lạng)' : 'SỐ KG XUẤT'}
                           </label>
-                          {/* ĐÃ FIX: Nhập theo KG, 0.1 nghĩa là 1 Lạng */}
-                          <input required type="number" step="any" placeholder={orderCategory === 'tinh_che' ? 'VD: 0.1' : 'VD: 0.5'} className="w-full border-2 border-gray-200 bg-white rounded-lg p-2 text-sm font-black text-gray-800 outline-none focus:border-gray-500 text-center" value={item.weight} onChange={(e) => handleUpdateItem(item.id, 'weight', e.target.value)} />
+                          <input 
+                              required 
+                              type="number" 
+                              step="any" 
+                              disabled={!item.batch_id} 
+                              placeholder={item.batch_id ? `Tối đa: ${maxVal.toFixed(3)}` : 'Chọn Lô'} 
+                              className="w-full border-2 border-gray-200 bg-white rounded-lg p-2 text-sm font-black text-gray-800 outline-none focus:border-blue-500 text-center disabled:opacity-50" 
+                              value={item.weight} 
+                              onChange={(e) => handleWeightChange(item.id, e.target.value)} 
+                          />
                        </div>
                        <div className="col-span-1">
                           <label className="text-[8px] font-bold uppercase text-gray-400 mb-1 block text-center truncate">
@@ -347,7 +395,7 @@ export default function NewOrderPage() {
                     </div>
                     {item.weight && item.priceInput && (
                         <div className="mt-2 text-[10px] font-bold text-right text-gray-500">
-                            Thành tiền: <span className="text-gray-900">{formatVND(Math.round(itemRev))}đ</span>
+                           Thành tiền: <span className="text-gray-900">{formatVND(Math.round(itemRev))}đ</span>
                         </div>
                     )}
                  </div>

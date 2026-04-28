@@ -80,15 +80,23 @@ export default function OrdersPage() {
     const groups: Record<string, any> = {};
 
     orders.forEach(order => {
-      const dateStr = new Date(order.created_at).toLocaleDateString('vi-VN');
+      const dateObj = new Date(order.created_at);
+      const dateStr = dateObj.toLocaleDateString('vi-VN');
+      const timeStr = dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+      
+      // ĐÂY LÀ CHÌA KHÓA TÁCH ĐƠN SÁNG/CHIỀU: 
+      // Dùng thời gian ISO cắt đến phút (YYYY-MM-DDTHH:mm) làm key.
+      // Cùng phút thì gộp thành 1 bill (vì lên 1 giỏ hàng), lệch phút/giờ thì tách bill mới.
+      const timeKey = dateObj.toISOString().slice(0, 16); 
       const customerId = order.customers?.id || 'unknown';
-      const groupKey = `${customerId}_${dateStr}`;
+      const groupKey = `${customerId}_${timeKey}`;
 
       if (!groups[groupKey]) {
         groups[groupKey] = {
           groupKey: groupKey,
           customer: order.customers,
-          dateValue: dateStr,
+          dateStr: dateStr,
+          timeStr: timeStr,
           rawDate: order.created_at,
           status: order.status,
           note: order.note,
@@ -231,16 +239,22 @@ export default function OrdersPage() {
   }
 
   const handleExportExcel = () => {
-    const exportData = orders.map((o, index) => ({
-      "STT": index + 1, "Mã Đơn Lẻ": `DD-${o.id.slice(0, 6).toUpperCase()}`, "Ngày chốt": new Date(o.created_at).toLocaleDateString('vi-VN'),
-      "Khách hàng": o.customers?.name, "Điện thoại": o.customers?.phone, "Địa chỉ giao": o.customers?.address || '',
-      "Mã Lô Xuất": o.batches?.batch_code || '', "Phân loại hàng": o.grade_type || 'Xô',
-      "Độ ẩm (%)": o.moisture_level || 0,
-      "Số Kg Yến": Number(o.weight).toFixed(3), "Hao hụt (Kg)": Number(o.weight_loss || 0).toFixed(3),
-      "Doanh thu món": Math.round(Number(o.revenue)).toLocaleString('vi-VN'), "Thuế 5%": Math.round(Number(o.tax_amount || 0)).toLocaleString('vi-VN'),
-      "Phí Ship": Math.round(Number(o.shipping_fee || 0)).toLocaleString('vi-VN'), "Lợi Nhuận Ròng": Math.round(Number(o.profit)).toLocaleString('vi-VN'),
-      "Người bán": o.seller || 'Quyên', "Trạng thái": o.status, "Ghi chú": o.note || ''
-    }))
+    const exportData = orders.map((o, index) => {
+      const orderDate = new Date(o.created_at);
+      const timeStr = orderDate.toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit', hour12: false});
+      const dateStr = orderDate.toLocaleDateString('vi-VN');
+
+      return {
+        "STT": index + 1, "Mã Đơn Lẻ": `DD-${o.id.slice(0, 6).toUpperCase()}`, "Ngày chốt": `${timeStr} ${dateStr}`,
+        "Khách hàng": o.customers?.name, "Điện thoại": o.customers?.phone, "Địa chỉ giao": o.customers?.address || '',
+        "Mã Lô Xuất": o.batches?.batch_code || '', "Phân loại hàng": o.grade_type || 'Xô',
+        "Độ ẩm (%)": o.moisture_level || 0,
+        "Số Kg Yến": Number(o.weight).toFixed(3), "Hao hụt (Kg)": Number(o.weight_loss || 0).toFixed(3),
+        "Doanh thu món": Math.round(Number(o.revenue)).toLocaleString('vi-VN'), "Thuế 5%": Math.round(Number(o.tax_amount || 0)).toLocaleString('vi-VN'),
+        "Phí Ship": Math.round(Number(o.shipping_fee || 0)).toLocaleString('vi-VN'), "Lợi Nhuận Ròng": Math.round(Number(o.profit)).toLocaleString('vi-VN'),
+        "Người bán": o.seller || 'Quyên', "Trạng thái": o.status, "Ghi chú": o.note || ''
+      }
+    })
     const worksheet = XLSX.utils.json_to_sheet(exportData)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, "Danh_Sach_Don_Hang")
@@ -294,7 +308,7 @@ export default function OrdersPage() {
         />
       </div>
 
-      {/* DANH SÁCH GOM NHÓM (GROUPED ORDERS) */}
+      {/* DANH SÁCH GOM NHÓM (ĐÃ CHIA CA SÁNG / CHIỀU) */}
       <div className="grid gap-5 md:gap-6 no-print">
         {groupedOrders.map((group: any) => (
           <div key={group.groupKey} className="bg-white rounded-[20px] md:rounded-[24px] border border-gray-200 shadow-sm overflow-hidden relative">
@@ -307,10 +321,13 @@ export default function OrdersPage() {
             {/* HEADER ĐƠN GỘP */}
             <div className="p-4 md:p-6 pb-3 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mt-4 md:mt-0">
                <div className="flex gap-3 items-center w-full">
-                  <div className="bg-blue-50 text-blue-700 p-2 md:p-3 rounded-lg flex flex-col items-center justify-center min-w-[60px] border border-blue-100 shrink-0">
-                    <span className="text-[8px] font-semibold uppercase text-blue-500">Ngày chốt</span>
-                    <span className="font-bold text-xs md:text-sm">{group.dateValue}</span>
+                  {/* CỤC HIỂN THỊ GIỜ CHỐT ĐƠN RÕ RÀNG */}
+                  <div className="bg-blue-50 text-blue-700 p-2 md:p-3 rounded-lg flex flex-col items-center justify-center min-w-[75px] border border-blue-100 shrink-0">
+                    <span className="text-[8px] font-bold uppercase text-blue-500 mb-0.5 tracking-widest">Chốt lúc</span>
+                    <span className="font-black text-sm md:text-base leading-none">{group.timeStr}</span>
+                    <span className="font-bold text-[9px] mt-1 opacity-70">{group.dateStr}</span>
                   </div>
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-bold text-lg md:text-xl text-gray-900 leading-tight truncate">{group.customer?.name}</h3>
@@ -365,7 +382,6 @@ export default function OrdersPage() {
                         <div className="flex justify-between items-end mb-3 px-1">
                            <div className="text-xs text-gray-600 font-medium">Bán: <b className="text-gray-900">{Number(item.weight).toFixed(3)} kg</b></div>
                            <div className="text-right">
-                              {/* ĐÃ LÀM TRÒN SỐ TIỀN MÓN */}
                               <p className="font-black text-blue-600 text-sm md:text-base leading-none">{Math.round(Number(item.revenue)).toLocaleString('vi-VN')}đ</p>
                            </div>
                         </div>
@@ -390,7 +406,7 @@ export default function OrdersPage() {
                </div>
             </div>
 
-            {/* TỔNG KẾT TÀI CHÍNH (ĐÃ FIX LỖI +-) */}
+            {/* TỔNG KẾT TÀI CHÍNH */}
             <div className="bg-white p-4 md:p-6 border-t border-gray-100 flex flex-col gap-2 mt-1">
                <div className="flex flex-wrap justify-between gap-2 border-b border-dashed border-gray-100 pb-2">
                   <div className="text-[10px] md:text-[11px] text-gray-500 font-medium">Thuế: <b className="text-gray-700">-{Math.round(group.totalTax).toLocaleString('vi-VN')}đ</b></div>
@@ -401,8 +417,6 @@ export default function OrdersPage() {
                   <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">Khách trả</p>
                   <div className="text-right">
                      <p className="text-xl md:text-2xl font-black text-gray-900 leading-none mb-1.5">{Math.round(group.totalRevenue).toLocaleString('vi-VN')}đ</p>
-                     
-                     {/* FIX LOGIC LÃI / LỖ THÔNG MINH */}
                      <p className={`text-[9px] font-bold px-2 py-0.5 rounded border inline-block ${group.totalProfit >= 0 ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-red-600 bg-red-50 border-red-100'}`}>
                          {group.totalProfit >= 0 ? 'Lãi: +' : 'Lỗ: -'}{Math.abs(Math.round(group.totalProfit)).toLocaleString('vi-VN')}đ
                      </p>
@@ -486,7 +500,7 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* --- MODAL HÓA ĐƠN PDF CHUẨN CÔNG TY TNHH (ĐÃ LÀM TRÒN SỐ TIỀN) --- */}
+      {/* --- MODAL HÓA ĐƠN PDF CHUẨN CÔNG TY TNHH --- */}
       {selectedInvoice && (
         <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm no-print">
           <div className="bg-white w-full max-w-3xl max-h-[95vh] overflow-y-auto rounded-[20px] shadow-2xl relative flex flex-col">
@@ -520,7 +534,7 @@ export default function OrdersPage() {
                       <h2 className="text-xl md:text-2xl font-black uppercase text-gray-800 mb-1">HÓA ĐƠN BÁN HÀNG</h2>
                       <p className="text-xs text-gray-500 italic mb-2">Bản thể hiện của hóa đơn điện tử</p>
                       <p className="text-sm text-gray-600"><span className="font-semibold">Số HD:</span> HD{selectedInvoice.items[0]?.id.substring(0, 8).toUpperCase()}</p>
-                      <p className="text-sm text-gray-600"><span className="font-semibold">Ngày lập:</span> {selectedInvoice.dateValue}</p>
+                      <p className="text-sm text-gray-600"><span className="font-semibold">Ngày lập:</span> {selectedInvoice.timeStr} ngày {selectedInvoice.dateStr}</p>
                    </div>
                 </div>
 
@@ -615,7 +629,7 @@ export default function OrdersPage() {
                    </div>
                 </div>
 
-                {/* SỐ TIỀN BẰNG CHỮ CỰC KỲ QUAN TRỌNG */}
+                {/* SỐ TIỀN BẰNG CHỮ */}
                 <div className="mb-10 text-sm font-semibold text-gray-800 bg-blue-50/50 p-3 rounded-lg border border-blue-100 flex gap-2">
                    <span className="shrink-0 italic">Số tiền viết bằng chữ: </span>
                    <span className="font-bold text-blue-900 uppercase">
@@ -644,7 +658,7 @@ export default function OrdersPage() {
                 </div>
             </div>
             
-          </div>
+          </div> 
         </div>
       )}
 
