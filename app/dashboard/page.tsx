@@ -62,6 +62,23 @@ export default function DashboardPage() {
     const pendingRevenue = pendingOrders.reduce((sum, o) => sum + Number(o.revenue || 0), 0)
     const pendingProfit = pendingOrders.reduce((sum, o) => sum + Number(o.profit || 0), 0)
 
+    // THUẬT TOÁN SẮP XẾP ƯU TIÊN ĐƠN CHƯA HOÀN TẤT LÊN ĐẦU
+    const statusPriority: Record<string, number> = {
+      'Chưa giao': 1,
+      'Đang giao': 2,
+      'Đã giao - Còn nợ': 3,
+      'Hoàn tất': 4
+    };
+
+    const sortedOrders = [...data.orders].sort((a, b) => {
+       const priorityA = statusPriority[a.status] || 5;
+       const priorityB = statusPriority[b.status] || 5;
+       if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+       }
+       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
     // Gộp dữ liệu cho Biểu Đồ
     const groupedChart: Record<string, any> = {}
     completedOrders.slice().reverse().forEach(o => {
@@ -76,7 +93,8 @@ export default function DashboardPage() {
       remainingWeight, totalRevenue, totalTax, totalShip, totalProfit,
       pendingRevenue, pendingProfit, 
       weightWithReceipt, weightWithoutReceipt,
-      chartData: Object.values(groupedChart)
+      chartData: Object.values(groupedChart),
+      sortedOrders // Xuất danh sách đã sắp xếp ra để dùng
     }
   }, [data])
 
@@ -166,35 +184,35 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* DANH SÁCH ĐƠN MỚI */}
+        {/* DANH SÁCH ĐƠN MỚI (ĐÃ ƯU TIÊN ĐƠN CÒN NỢ LÊN ĐẦU) */}
         <div className="bg-white p-5 md:p-8 rounded-[24px] border border-gray-100 shadow-sm flex flex-col max-h-[450px]">
-          <h3 className="text-base md:text-lg font-black text-gray-900 uppercase tracking-tight mb-5">Đơn mới nhất</h3>
+          <h3 className="text-base md:text-lg font-black text-gray-900 uppercase tracking-tight mb-5">Danh sách cần thu nợ</h3>
           <div className="space-y-3 overflow-y-auto custom-scrollbar pr-2 flex-1">
-            {data.orders.slice(0, 10).map((o) => (
+            {stats.sortedOrders.slice(0, 10).map((o) => (
               <div key={o.id} className="flex justify-between items-center p-4 bg-gray-50/50 hover:bg-blue-50/30 rounded-xl border border-gray-100 transition-colors group">
                 <div className="flex items-center gap-3">
                   <div className="bg-white border border-gray-200 text-gray-600 w-10 h-10 rounded-lg flex items-center justify-center font-bold text-[9px] shrink-0 shadow-sm">{formatDate(o.created_at)}</div>
                   <div className="min-w-0">
                     <p className="font-bold text-gray-900 text-sm truncate">{o.customers?.name}</p>
-                    <p className={`text-[9px] font-bold mt-0.5 uppercase flex items-center gap-1 ${o.status === 'Hoàn tất' ? 'text-emerald-600' : 'text-orange-500'}`}>
-                      {o.weight} kg • {o.status === 'Hoàn tất' ? 'Đã thu tiền' : 'Đang chờ thu'}
+                    <p className={`text-[9px] font-bold mt-0.5 uppercase flex items-center gap-1 ${o.status === 'Hoàn tất' ? 'text-emerald-600' : 'text-orange-500 animate-pulse'}`}>
+                      {o.weight} kg • {o.status}
                     </p>
                   </div>
                 </div>
                 <div className="text-right pl-2">
                    <p className="font-black text-blue-600 text-sm">{Number(o.revenue).toLocaleString()}đ</p>
                    <p className={`text-[9px] font-bold mt-0.5 ${o.status === 'Hoàn tất' ? 'text-emerald-600' : 'text-gray-400'}`}>
-                     +{Number(o.profit).toLocaleString()}đ
+                      +{Number(o.profit).toLocaleString()}đ
                    </p>
                 </div>
               </div>
             ))}
-            {data.orders.length === 0 && <p className="text-center text-sm text-gray-400 py-10">Chưa có dữ liệu.</p>}
+            {stats.sortedOrders.length === 0 && <p className="text-center text-sm text-gray-400 py-10">Chưa có dữ liệu.</p>}
           </div>
         </div>
       </div>
 
-      {/* POPUP LỊCH SỬ ĐỐI SOÁT */}
+      {/* POPUP LỊCH SỬ ĐỐI SOÁT (ĐÃ ƯU TIÊN ĐƠN CÒN NỢ LÊN ĐẦU) */}
       {selectedMetric && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 md:p-4 backdrop-blur-sm">
           <div className="bg-white rounded-[24px] p-6 md:p-8 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col relative shadow-2xl animate-in zoom-in-95">
@@ -224,7 +242,7 @@ export default function DashboardPage() {
                         <td className="p-3 text-right">{Number(b.total_weight).toFixed(3)}kg</td>
                         <td className="p-3 text-right font-black text-gray-800">{Number(b.total_weight * b.cost_per_kg).toLocaleString()}đ</td>
                       </tr>
-                    )) : data.orders.map(o => (
+                    )) : stats.sortedOrders.map((o: any) => (
                       <tr key={o.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                         <td className="p-3 text-gray-900 truncate max-w-[120px]">{o.customers?.name}</td>
                         <td className="p-3">
@@ -242,7 +260,7 @@ export default function DashboardPage() {
                     ))}
                   </tbody>
                 </table>
-                {((selectedMetric.type === 'batches' && data.batches.length === 0) || (selectedMetric.type !== 'batches' && data.orders.length === 0)) && (
+                {((selectedMetric.type === 'batches' && data.batches.length === 0) || (selectedMetric.type !== 'batches' && stats.sortedOrders.length === 0)) && (
                    <p className="text-center py-10 text-gray-400 text-xs font-medium">Chưa có dữ liệu đối soát.</p>
                 )}
             </div>
